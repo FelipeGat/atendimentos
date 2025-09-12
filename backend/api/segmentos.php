@@ -1,390 +1,392 @@
 <?php
-// Configuração de headers CORS mais robusta
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-header('Content-Type: application/json; charset=utf-8');
+/**
+ * API de Segmentos - Versão Debug
+ * Sistema de Gerenciamento de Atendimentos
+ */
 
-// Preflight request (OPTIONS)
+// Habilitar exibição de erros para debug
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Definir modo de desenvolvimento
+define('DEVELOPMENT_MODE', true);
+
+// Definir cabeçalhos CORS
+header("Content-Type: application/json; charset=UTF-8");
+header("Access-Control-Allow-Origin: http://localhost:3000");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With");
+header("Access-Control-Allow-Credentials: true");
+
+// Tratar requisição OPTIONS (pré-flight CORS)
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
-    echo json_encode(['success' => true, 'message' => 'CORS preflight OK']);
-    exit();
+    exit;
 }
 
-// Configuração de erro para debug
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Incluir configurações
+require_once __DIR__ . "/../config/db.php";
+require_once __DIR__ . "/../config/util.php";
 
 try {
-    // Incluir arquivo de configuração do banco
-    $config_path = '../config/db.php';
-    if (!file_exists($config_path)) {
-        throw new Exception('Arquivo de configuração do banco não encontrado: ' . $config_path);
+    // Obter empresa_id (com fallback para desenvolvimento)
+    $empresa_id = obterEmpresaId();
+    if (!$empresa_id && DEVELOPMENT_MODE) {
+        $empresa_id = 1; // ID padrão para desenvolvimento
     }
     
-    require_once $config_path;
-    
-    // Verificar se a conexão PDO foi estabelecida
-    if (!isset($pdo)) {
-        throw new Exception('Conexão com banco de dados não estabelecida');
+    if (!$empresa_id) {
+        responderErro('ID da empresa não fornecido no cabeçalho X-Empresa-ID', 400);
     }
-    
+
 } catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Erro de configuração: ' . $e->getMessage(),
-        'debug' => [
-            'config_path' => $config_path ?? 'não definido',
-            'file_exists' => file_exists($config_path ?? '') ? 'sim' : 'não'
-        ]
-    ]);
-    exit();
+    error_log("Erro na inicialização da API de segmentos: " . $e->getMessage());
+    responderErro('Erro interno do servidor: ' . $e->getMessage(), 500);
 }
 
-// Get the request method and path
+// Roteamento das requisições
 $method = $_SERVER['REQUEST_METHOD'];
-$request_uri = $_SERVER['REQUEST_URI'];
-$path = parse_url($request_uri, PHP_URL_PATH);
+$id = $_GET['id'] ?? null;
 
-// Debug info
-$debug_info = [
-    'method' => $method,
-    'request_uri' => $request_uri,
-    'path' => $path,
-    'timestamp' => date('Y-m-d H:i:s')
-];
-
-// Extract ID if present in URL
-$id = null;
-
-// Primeiro, verificar se há ID na query string
-if (isset($_GET['id']) && is_numeric($_GET['id'])) {
-    $id = (int) $_GET['id'];
-} else {
-    // Se não há na query string, procurar na URL
-    $path_parts = explode('/', trim($path, '/'));
-    foreach ($path_parts as $part) {
-        if (is_numeric($part)) {
-            $id = (int) $part;
-            break;
-        }
-    }
-}
-
-try {
-    switch ($method) {
-        case 'GET':
-            if ($id) {
-                getSegmento($pdo, $id);
-            } else {
-                getAllSegmentos($pdo);
-            }
-            break;
-            
-        case 'POST':
-            createSegmento($pdo);
-            break;
-            
-        case 'PUT':
-            if ($id) {
-                updateSegmento($pdo, $id);
-            } else {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'ID é obrigatório para atualização',
-                    'debug' => $debug_info
-                ]);
-            }
-            break;
-            
-        case 'DELETE':
-            if ($id) {
-                deleteSegmento($pdo, $id);
-            } else {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'ID é obrigatório para exclusão',
-                    'debug' => $debug_info
-                ]);
-            }
-            break;
-            
-        default:
-            http_response_code(405);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Método não permitido: ' . $method,
-                'debug' => $debug_info
-            ]);
-            break;
-    }
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Erro interno do servidor: ' . $e->getMessage(),
-        'debug' => $debug_info
-    ]);
-}
-
-// Função para listar todos os segmentos
-function getAllSegmentos($pdo) {
-    try {
-        // Verificar se a tabela existe
-        $stmt = $pdo->prepare("SHOW TABLES LIKE 'segmentos'");
-        $stmt->execute();
-        if (!$stmt->fetch()) {
-            throw new Exception('Tabela "segmentos" não encontrada no banco de dados');
-        }
+switch ($method) {
+    case 'GET':
+        handleGet($conn, $empresa_id, $id);
+        break;
         
-        // Buscar segmentos
-        $stmt = $pdo->prepare("SELECT id, nome, criado_em FROM segmentos WHERE removido_em IS NULL ORDER BY nome ASC");
-        $stmt->execute();
-        $segmentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    case 'POST':
+        handlePost($conn, $empresa_id);
+        break;
         
-        echo json_encode([
-            'success' => true,
-            'data' => $segmentos,
-            'total' => count($segmentos),
-            'message' => 'Segmentos carregados com sucesso'
-        ]);
+    case 'PUT':
+        handlePut($conn, $empresa_id);
+        break;
         
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao buscar segmentos: ' . $e->getMessage(),
-            'sql_error' => $e->getCode()
-        ]);
-    }
-}
+    case 'DELETE':
+    $id = $_GET['id'] ?? null;
+    $empresaId = $_SERVER['HTTP_X_EMPRESA_ID'] ?? null;
 
-// Função para buscar um segmento específico
-function getSegmento($pdo, $id) {
-    try {
-        $stmt = $pdo->prepare("SELECT id, nome, criado_em FROM segmentos WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        $segmento = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($segmento) {
-            echo json_encode([
-                'success' => true,
-                'data' => $segmento
-            ]);
+    if ($id && $empresaId) {
+        $stmt = $conn->prepare("DELETE FROM segmentos WHERE id = ? AND empresa_id = ?");
+        $stmt->bind_param("ii", $id, $empresaId);
+
+        if ($stmt->execute()) {
+            echo json_encode(["success" => true, "message" => "Segmento excluído com sucesso"]);
         } else {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Segmento não encontrado'
-            ]);
+            echo json_encode(["success" => false, "error" => "Erro ao excluir segmento: " . $stmt->error]);
         }
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao buscar segmento: ' . $e->getMessage()
-        ]);
+    } else {
+        echo json_encode(["success" => false, "error" => "ID ou Empresa inválido"]);
+    }
+    break;
+
+        
+    default:
+        responderErro('Método não permitido', 405);
+        break;
+}
+
+/**
+ * Listar segmentos ou buscar por ID
+ */
+function handleGet($conn, $empresa_id, $id) {
+    try {
+        if ($id) {
+            // Buscar segmento específico
+            $stmt = $conn->prepare("
+                SELECT id, nome, descricao, ativo, criado_em, atualizado_em
+                FROM segmentos 
+                WHERE id = ? AND empresa_id = ? AND removido_em IS NULL
+            ");
+            if (!$stmt) {
+                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+            }
+            $stmt->bind_param("ii", $id, $empresa_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $segmento = $result->fetch_assoc();
+            
+            if (!$segmento) {
+                responderErro('Segmento não encontrado', 404);
+            }
+            
+            // Converter ativo para boolean
+            $segmento['ativo'] = (bool)$segmento['ativo'];
+            
+            responderSucesso('Segmento encontrado', $segmento);
+            
+        } else {
+            // Listar todos os segmentos
+            $stmt = $conn->prepare("
+                SELECT id, nome, descricao, ativo, criado_em, atualizado_em
+                FROM segmentos 
+                WHERE empresa_id = ? AND removido_em IS NULL 
+                ORDER BY id DESC
+            ");
+            if (!$stmt) {
+                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+            }
+            $stmt->bind_param("i", $empresa_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $segmentos = $result->fetch_all(MYSQLI_ASSOC);
+            
+            // Converter ativo para boolean em todos os registros
+            foreach ($segmentos as &$segmento) {
+                $segmento['ativo'] = (bool)$segmento['ativo'];
+            }
+            
+            responderSucesso('Segmentos listados com sucesso', $segmentos);
+        }
+        
+    } catch (Exception $e) {
+        error_log("Erro ao buscar segmentos: " . $e->getMessage());
+        responderErro('Erro ao buscar segmentos: ' . $e->getMessage(), 500);
     }
 }
 
-// Função para criar um novo segmento
-function createSegmento($pdo) {
+/**
+ * Criar novo segmento
+ */
+function handlePost($conn, $empresa_id) {
     try {
         $input = json_decode(file_get_contents('php://input'), true);
         
-        if (!$input) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Dados JSON inválidos'
-            ]);
-            return;
-        }
-
-        // Validação de campos obrigatórios
-        $required_fields = ['nome'];
-        foreach ($required_fields as $field) {
-            if (!isset($input[$field]) || empty(trim($input[$field]))) {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => "O campo '{$field}' é obrigatório"
-                ]);
-                return;
-            }
+        // Validar dados obrigatórios
+        if (!$input || !isset($input['nome']) || empty(trim($input['nome']))) {
+            responderErro('Nome do segmento é obrigatório', 400);
         }
         
-        // Verificação de unicidade para o nome
-        $stmt = $pdo->prepare("SELECT id FROM segmentos WHERE nome = ? AND removido_em IS NULL");
-        $stmt->execute([trim($input['nome'])]);
-        if ($stmt->fetch()) {
-            http_response_code(409);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Já existe um segmento com este nome'
-            ]);
-            return;
+        $nome = trim($input['nome']);
+        $descricao = isset($input['descricao']) ? trim($input['descricao']) : '';
+        $ativo = isset($input['ativo']) ? (int)$input['ativo'] : 1;
+        
+        // Verificar se já existe segmento com mesmo nome na empresa
+        $stmt = $conn->prepare("
+            SELECT id FROM segmentos 
+            WHERE nome = ? AND empresa_id = ? AND removido_em IS NULL
+        ");
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
         }
-
-        // Preparar os dados para a inserção
-        $data = [
-            'nome' => trim($input['nome'])
-        ];
+        $stmt->bind_param("si", $nome, $empresa_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
         
-        $stmt = $pdo->prepare("INSERT INTO segmentos (nome, criado_em, atualizado_em) VALUES (?, NOW(), NOW())");
-        $stmt->execute(array_values($data));
+        if ($result->num_rows > 0) {
+            responderErro('Já existe um segmento com este nome', 409);
+        }
         
-        $id = $pdo->lastInsertId();
+        // Inserir novo segmento
+        $stmt = $conn->prepare("
+            INSERT INTO segmentos (nome, descricao, ativo, empresa_id) 
+            VALUES (?, ?, ?, ?)
+        ");
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+        }
+        $stmt->bind_param("ssii", $nome, $descricao, $ativo, $empresa_id);
         
-        echo json_encode([
-            'success' => true,
-            'message' => 'Segmento criado com sucesso',
-            'data' => array_merge(['id' => $id], $data)
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao criar segmento: ' . $e->getMessage()
-        ]);
+        if ($stmt->execute()) {
+            $lastId = $conn->insert_id;
+            
+            // Buscar o registro criado para retornar
+            $stmt = $conn->prepare("
+                SELECT id, nome, descricao, ativo, criado_em, atualizado_em
+                FROM segmentos 
+                WHERE id = ?
+            ");
+            $stmt->bind_param("i", $lastId);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $segmento = $result->fetch_assoc();
+            $segmento['ativo'] = (bool)$segmento['ativo'];
+            
+            responderSucesso('Segmento criado com sucesso', $segmento, 201);
+        } else {
+            responderErro('Erro ao criar segmento: ' . $stmt->error, 500);
+        }
+        
+    } catch (Exception $e) {
+        error_log("Erro ao criar segmento: " . $e->getMessage());
+        responderErro('Dados inválidos: ' . $e->getMessage(), 400);
     }
 }
 
-// Função para atualizar um segmento
-function updateSegmento($pdo, $id) {
+/**
+ * Atualizar segmento
+ */
+function handlePut($conn, $empresa_id) {
     try {
         $input = json_decode(file_get_contents('php://input'), true);
-        
-        if (!$input) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Dados JSON inválidos'
-            ]);
-            return;
-        }
 
-        // Validação de campos obrigatórios
-        $required_fields = ['nome'];
-        foreach ($required_fields as $field) {
-            if (!isset($input[$field]) || empty(trim($input[$field]))) {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => "O campo '{$field}' é obrigatório"
-                ]);
-                return;
-            }
+        // O ID é lido do corpo da requisição
+        if (!isset($input['id'])) {
+            responderErro('ID do segmento é obrigatório', 400);
         }
-        
-        // Validação de campos obrigatórios
-        $required_fields = ['nome'];
-        foreach ($required_fields as $field) {
-            if (!isset($input[$field]) || empty(trim($input[$field]))) {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => "O campo '{$field}' é obrigatório"
-                ]);
-                return;
-            }
-        }
+        $id = $input['id'];
         
         // Verificar se o segmento existe
-        $stmt = $pdo->prepare("SELECT id FROM segmentos WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        if (!$stmt->fetch()) {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Segmento não encontrado'
-            ]);
-            return;
+        $stmt = $conn->prepare("
+            SELECT id FROM segmentos 
+            WHERE id = ? AND empresa_id = ? AND removido_em IS NULL
+        ");
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+        }
+        $stmt->bind_param("ii", $id, $empresa_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows === 0) {
+            responderErro('Segmento não encontrado', 404);
         }
         
-        // Verificação de unicidade para o nome (se fornecido e diferente do atual)
+        // Verificar nome único (se fornecido)
         if (isset($input['nome']) && !empty(trim($input['nome']))) {
-            $stmt = $pdo->prepare("SELECT id FROM segmentos WHERE nome = ? AND id != ? AND removido_em IS NULL");
-            $stmt->execute([trim($input['nome']), $id]);
-            if ($stmt->fetch()) {
-                http_response_code(409);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'Já existe outro segmento com este nome'
-                ]);
-                return;
+            $nome = trim($input['nome']);
+            $stmt = $conn->prepare("
+                SELECT id FROM segmentos 
+                WHERE nome = ? AND empresa_id = ? AND id != ? AND removido_em IS NULL
+            ");
+            if (!$stmt) {
+                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+            }
+            $stmt->bind_param("sii", $nome, $empresa_id, $id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if ($result->num_rows > 0) {
+                responderErro('Já existe outro segmento com este nome', 409);
             }
         }
-
-        // Preparar os dados para a atualização
-        $data = [
-            'nome' => trim($input['nome'])
-        ];
         
-        $stmt = $pdo->prepare("UPDATE segmentos SET nome = ?, atualizado_em = NOW() WHERE id = ?");
-        $stmt->execute(array_merge(array_values($data), [$id]));
+        // Preparar campos para atualização
+        $fields = [];
+        $params = [];
+        $types = '';
         
-        echo json_encode([
-            'success' => true,
-            'message' => 'Segmento atualizado com sucesso',
-            'data' => array_merge(['id' => $id], $data)
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao atualizar segmento: ' . $e->getMessage()
-        ]);
+        $allowed_fields = ['nome', 'descricao', 'ativo'];
+        
+        foreach ($input as $key => $value) {
+            if (in_array($key, $allowed_fields)) {
+                if ($key === 'nome' || $key === 'descricao') {
+                    $value = trim($value);
+                    $types .= 's';
+                }
+                if ($key === 'ativo') {
+                    $value = (int)$value;
+                    $types .= 'i';
+                }
+                
+                $fields[] = "{$key} = ?";
+                $params[] = $value;
+            }
+        }
+        
+        if (empty($fields)) {
+            responderErro('Nenhum campo válido para atualizar', 400);
+        }
+        
+        $types .= 'ii';
+        $params[] = $id;
+        $params[] = $empresa_id;
+        
+        // Atualizar segmento
+        $sql = "UPDATE segmentos SET " . implode(', ', $fields) . " WHERE id = ? AND empresa_id = ?";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+        }
+        $stmt->bind_param($types, ...$params);
+        
+        if ($stmt->execute()) {
+            // Buscar o registro atualizado para retornar
+            $stmt = $conn->prepare("
+                SELECT id, nome, descricao, ativo, criado_em, atualizado_em
+                FROM segmentos 
+                WHERE id = ? AND empresa_id = ?
+            ");
+            $stmt->bind_param("ii", $id, $empresa_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $segmento = $result->fetch_assoc();
+            $segmento['ativo'] = (bool)$segmento['ativo'];
+            
+            responderSucesso('Segmento atualizado com sucesso', $segmento);
+        } else {
+            responderErro('Erro ao atualizar segmento: ' . $stmt->error, 500);
+        }
+        
+    } catch (Exception $e) {
+        error_log("Erro geral ao atualizar segmento: " . $e->getMessage());
+        responderErro('Dados inválidos: ' . $e->getMessage(), 400);
     }
 }
 
-// Função para excluir um segmento (soft delete)
-function deleteSegmento($pdo, $id) {
+/**
+ * Excluir segmento (soft delete) - Versão Debug
+ */
+function handleDelete($conn, $empresa_id) {
     try {
+        // CORREÇÃO: Pega o ID da URL, não do corpo da requisição
+        if (!isset($_GET['id'])) {
+            responderErro('ID do segmento é obrigatório', 400);
+        }
+        $id = (int)$_GET['id'];
+        
         // Verificar se o segmento existe
-        $stmt = $pdo->prepare("SELECT id FROM segmentos WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        if (!$stmt->fetch()) {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Segmento não encontrado'
-            ]);
-            return;
+        $stmt = $conn->prepare("
+            SELECT id FROM segmentos 
+            WHERE id = ? AND empresa_id = ? AND removido_em IS NULL
+        ");
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+        }
+        $stmt->bind_param("ii", $id, $empresa_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows === 0) {
+            responderErro('Segmento não encontrado', 404);
         }
         
-        // Verificar se o segmento está sendo usado em algum cliente
-        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM clientes WHERE segmento_id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        // Verificar se o segmento está sendo usado por clientes
+        $stmt_check = $conn->prepare("
+            SELECT COUNT(*) as count FROM clientes 
+            WHERE segmento_id = ? AND empresa_id = ? AND removido_em IS NULL
+        ");
+        if (!$stmt_check) {
+            responderErro("Erro na preparação da consulta de dependência: " . $conn->error, 500);
+        }
+        $stmt_check->bind_param("ii", $id, $empresa_id);
+        $stmt_check->execute();
+        $result_check = $stmt_check->get_result();
+        $count = $result_check->fetch_assoc()['count'];
         
-        if ($result['count'] > 0) {
-            http_response_code(409);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Não é possível excluir este segmento pois ele está sendo usado em um ou mais clientes'
-            ]);
-            return;
+        if ($count > 0) {
+            responderErro('Não é possível excluir este segmento pois ele está sendo usado por ' . $count . ' cliente(s).', 409);
         }
         
         // Realizar soft delete
-        $stmt = $pdo->prepare("UPDATE segmentos SET removido_em = NOW() WHERE id = ?");
-        $stmt->execute([$id]);
+        $stmt_delete = $conn->prepare("
+            UPDATE segmentos 
+            SET removido_em = NOW() 
+            WHERE id = ? AND empresa_id = ?
+        ");
+        if (!$stmt_delete) {
+            responderErro("Erro na preparação da consulta de exclusão: " . $conn->error, 500);
+        }
         
-        echo json_encode([
-            'success' => true,
-            'message' => 'Segmento excluído com sucesso'
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao excluir segmento: ' . $e->getMessage()
-        ]);
+        $stmt_delete->bind_param("ii", $id, $empresa_id);
+        
+        if ($stmt_delete->execute()) {
+            responderSucesso('Segmento excluído com sucesso');
+        } else {
+            responderErro('Erro ao excluir segmento: ' . $stmt_delete->error, 500);
+        }
+        
+    } catch (Exception $e) {
+        responderErro('Erro ao excluir segmento: ' . $e->getMessage(), 500);
     }
 }
-?>

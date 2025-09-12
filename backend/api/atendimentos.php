@@ -1,432 +1,303 @@
 <?php
-// Configuração de headers CORS mais robusta
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-header('Content-Type: application/json; charset=utf-8');
+/**
+ * API de Atendimentos
+ * Sistema de Gerenciamento de Atendimentos
+ */
 
-// Preflight request (OPTIONS)
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    echo json_encode(['success' => true, 'message' => 'CORS preflight OK']);
-    exit();
+define('DEVELOPMENT_MODE', true);
+
+// Definir cabeçalhos CORS
+header("Content-Type: application/json; charset=UTF-8");
+header("Access-Control-Allow-Origin: http://localhost:3000");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With");
+header("Access-Control-Allow-Credentials: true");
+
+// Incluir configurações
+require_once __DIR__ . "/../config/db.php";
+require_once __DIR__ . "/../config/util.php";
+
+// Sobrescrever função para aceitar também via query string (para testes)
+function obterEmpresaId() {
+    $headers = getallheaders();
+    if (!empty($headers['X-Empresa-ID'])) {
+        return intval($headers['X-Empresa-ID']);
+    }
+    if (!empty($_GET['empresa_id'])) {
+        return intval($_GET['empresa_id']);
+    }
+    return null;
 }
 
-// Configuração de erro para debug
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-try {
-    // Incluir arquivo de configuração do banco
-    $config_path = '../config/db.php';
-    if (!file_exists($config_path)) {
-        throw new Exception('Arquivo de configuração do banco não encontrado: ' . $config_path);
-    }
-    
-    require_once $config_path;
-    
-    // Verificar se a conexão PDO foi estabelecida
-    if (!isset($pdo)) {
-        throw new Exception('Conexão com banco de dados não estabelecida');
-    }
-    
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Erro de configuração: ' . $e->getMessage(),
-        'debug' => [
-            'config_path' => $config_path ?? 'não definido',
-            'file_exists' => file_exists($config_path ?? '') ? 'sim' : 'não'
-        ]
-    ]);
-    exit();
-}
-
-// Get the request method and path
+// Roteamento
 $method = $_SERVER['REQUEST_METHOD'];
-$request_uri = $_SERVER['REQUEST_URI'];
-$path = parse_url($request_uri, PHP_URL_PATH);
+$id = $_GET['id'] ?? null;
 
-// Debug info
-$debug_info = [
-    'method' => $method,
-    'request_uri' => $request_uri,
-    'path' => $path,
-    'timestamp' => date('Y-m-d H:i:s')
-];
-
-// Extract ID if present in URL
-$path_parts = explode('/', trim($path, '/'));
-$id = null;
-
-// Procurar por ID numérico na URL
-foreach ($path_parts as $part) {
-    if (is_numeric($part)) {
-        $id = (int) $part;
+switch ($method) {
+    case 'OPTIONS':
+        http_response_code(200);
+        exit();
+    case 'GET':
+        try {
+            $empresa_id = obterEmpresaId();
+            if (!$empresa_id) {
+                responderErro('ID da empresa não fornecido (use cabeçalho X-Empresa-ID ou ?empresa_id=)', 400);
+            }
+            handleGet($conn, $empresa_id, $id);
+        } catch (Exception $e) {
+            responderErro('Erro interno do servidor: ' . $e->getMessage(), 500);
+        }
         break;
-    }
+    case 'POST':
+        try {
+            $empresa_id = obterEmpresaId();
+            if (!$empresa_id) {
+                responderErro('ID da empresa não fornecido', 400);
+            }
+            handlePost($conn, $empresa_id);
+        } catch (Exception $e) {
+            responderErro('Erro interno do servidor: ' . $e->getMessage(), 500);
+        }
+        break;
+    case 'PUT':
+        try {
+            $empresa_id = obterEmpresaId();
+            if (!$empresa_id) {
+                responderErro('ID da empresa não fornecido', 400);
+            }
+            handlePut($conn, $empresa_id, $id);
+        } catch (Exception $e) {
+            responderErro('Erro interno do servidor: ' . $e->getMessage(), 500);
+        }
+        break;
+    case 'DELETE':
+        try {
+            $empresa_id = obterEmpresaId();
+            if (!$empresa_id) {
+                responderErro('ID da empresa não fornecido', 400);
+            }
+            if (!$id) {
+                parse_str(file_get_contents("php://input"), $d);
+                $id = $d['id'] ?? null;
+            }
+            handleDelete($conn, $empresa_id, $id);
+        } catch (Exception $e) {
+            responderErro('Erro interno do servidor: ' . $e->getMessage(), 500);
+        }
+        break;
+    default:
+        responderErro('Método não permitido', 405);
+        break;
 }
 
-try {
-    switch ($method) {
-        case 'GET':
-            if ($id) {
-                getAtendimento($pdo, $id);
-            } else {
-                getAllAtendimentos($pdo);
-            }
-            break;
-            
-        case 'POST':
-            createAtendimento($pdo);
-            break;
-            
-        case 'PUT':
-            if ($id) {
-                updateAtendimento($pdo, $id);
-            } else {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'ID é obrigatório para atualização',
-                    'debug' => $debug_info
-                ]);
-            }
-            break;
-            
-        case 'DELETE':
-            if ($id) {
-                deleteAtendimento($pdo, $id);
-            } else {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'ID é obrigatório para exclusão',
-                    'debug' => $debug_info
-                ]);
-            }
-            break;
-            
-        default:
-            http_response_code(405);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Método não permitido: ' . $method,
-                'debug' => $debug_info
-            ]);
-            break;
-    }
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Erro interno do servidor: ' . $e->getMessage(),
-        'debug' => $debug_info
-    ]);
-}
-
-// Função para listar todos os atendimentos com informações relacionadas
-function getAllAtendimentos($pdo) {
+/**
+ * Funções de manipuladores
+ */
+function handleGet($conn, $empresa_id, $id = null)
+{
     try {
-        // Verificar se as tabelas existem
-        $stmt_check = $pdo->prepare("SHOW TABLES LIKE 'atendimentos'");
-        $stmt_check->execute();
-        if (!$stmt_check->fetch()) {
-            throw new Exception('Tabela "atendimentos" não encontrada no banco de dados');
-        }
+        if ($id) {
+            $sql = "SELECT * FROM atendimentos 
+                    WHERE id = ? AND empresa_id = ? AND removido_em IS NULL 
+                    LIMIT 1";
+            $stmt = $conn->prepare($sql);
+            if (!$stmt) {
+                responderErro("Erro no prepare (GET ID): " . $conn->error, 500);
+            }
+            $stmt->bind_param("ii", $id, $empresa_id);
+            if (!$stmt->execute()) {
+                responderErro("Erro no execute (GET ID): " . $stmt->error, 500);
+            }
+            $result = $stmt->get_result();
+            $row = $result->fetch_assoc();
 
-        $stmt_check = $pdo->prepare("SHOW TABLES LIKE 'clientes'");
-        $stmt_check->execute();
-        if (!$stmt_check->fetch()) {
-            throw new Exception('Tabela "clientes" não encontrada no banco de dados');
-        }
-
-        $stmt_check = $pdo->prepare("SHOW TABLES LIKE 'assuntos'");
-        $stmt_check->execute();
-        if (!$stmt_check->fetch()) {
-            throw new Exception('Tabela "assuntos" não encontrada no banco de dados');
-        }
-        
-        // Query para buscar atendimentos com os nomes de cliente, assunto e equipamento
-        $sql = "SELECT 
-                    a.id, 
-                    a.descricao,
-                    a.prioridade,
-                    a.data_atendimento,
-                    a.hora_atendimento,
-                    a.atendente_id,
-                    a.solicitante,
-                    a.telefone_solicitante,
-                    a.status,
-                    a.criado_em,
-                    c.nome AS cliente_nome, 
-                    s.nome AS assunto_nome
-                FROM atendimentos a
-                INNER JOIN clientes c ON a.cliente_id = c.id
-                INNER JOIN assuntos s ON a.assunto_id = s.id
-                WHERE a.removido_em IS NULL
-                ORDER BY a.criado_em DESC";
-                
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute();
-        $atendimentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        echo json_encode([
-            'success' => true,
-            'data' => $atendimentos,
-            'total' => count($atendimentos),
-            'message' => 'Atendimentos carregados com sucesso'
-        ]);
-        
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao buscar atendimentos: ' . $e->getMessage(),
-            'sql_error' => $e->getCode()
-        ]);
-    }
-}
-
-// Função para buscar um atendimento específico
-function getAtendimento($pdo, $id) {
-    try {
-        $sql = "SELECT 
-                    a.id, 
-                    a.descricao,
-                    a.prioridade,
-                    a.data_atendimento,
-                    a.hora_atendimento,
-                    a.atendente_id,
-                    a.solicitante,
-                    a.telefone_solicitante,
-                    a.cliente_id,
-                    a.assunto_id,
-                    a.status,
-                    a.criado_em
-                FROM atendimentos a
-                WHERE a.id = ? AND a.removido_em IS NULL";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$id]);
-        $atendimento = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($atendimento) {
-            echo json_encode([
-                'success' => true,
-                'data' => $atendimento
-            ]);
+            if ($row) {
+                responderSucesso('Atendimento encontrado', $row);
+            } else {
+                responderErro('Atendimento não encontrado', 404);
+            }
         } else {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Atendimento não encontrado'
-            ]);
-        }
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao buscar atendimento: ' . $e->getMessage()
-        ]);
-    }
-}
+            $status = $_GET['status'] ?? null;
+            $search = $_GET['search'] ?? null;
 
-// Função para criar um novo atendimento
-function createAtendimento($pdo) {
-    try {
-        $input = json_decode(file_get_contents('php://input'), true);
-        
-        if (!$input) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Dados JSON inválidos'
-            ]);
-            return;
-        }
+            $sql = "SELECT a.*, 
+                           c.nome AS cliente_nome, 
+                           u.nome AS atendente_nome, 
+                           eq.nome AS equipamento_nome, 
+                           ass.nome AS assunto_nome 
+                    FROM atendimentos a 
+                    INNER JOIN clientes c ON c.id = a.cliente_id 
+                    INNER JOIN usuarios u ON u.id = a.atendente_id 
+                    LEFT JOIN equipamentos eq ON eq.id = a.equipamento_id
+                    LEFT JOIN assuntos ass ON ass.id = a.assunto_id
+                    WHERE a.empresa_id = ? AND a.removido_em IS NULL";
 
-        // Validação de campos obrigatórios
-        $required_fields = ['descricao', 'prioridade', 'data_atendimento', 'hora_atendimento', 'solicitante', 'cliente_id', 'assunto_id'];
-        foreach ($required_fields as $field) {
-            if (!isset($input[$field]) || empty(trim($input[$field]))) {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => "O campo '{$field}' é obrigatório"
-                ]);
-                return;
+            $params = [$empresa_id];
+            $types = "i";
+
+            if ($status && $status !== 'todos') {
+                $sql .= " AND a.status = ?";
+                $params[] = $status;
+                $types .= "s";
             }
+            if ($search) {
+                $sql .= " AND (a.descricao LIKE ? OR a.observacoes LIKE ? 
+                            OR c.nome LIKE ? OR u.nome LIKE ?)";
+                $like = "%" . $search . "%";
+                $params = array_merge($params, [$like, $like, $like, $like]);
+                $types .= "ssss";
+            }
+
+            $sql .= " ORDER BY a.criado_em DESC";
+            
+            $stmt = $conn->prepare($sql);
+            if (!$stmt) {
+                responderErro("Erro no prepare (GET ALL): " . $conn->error, 500);
+            }
+
+            $stmt->bind_param($types, ...$params);
+            
+            if (!$stmt->execute()) {
+                responderErro("Erro no execute (GET ALL): " . $stmt->error, 500);
+            }
+            
+            $result = $stmt->get_result();
+            $rows = $result->fetch_all(MYSQLI_ASSOC);
+
+            responderSucesso('Atendimentos listados', $rows);
         }
-        
-        // Validação dos IDs de cliente e assunto
-        validateForeignKeys($pdo, $input);
-        
-        // Preparar os dados para a inserção
-        $data = [
-            'descricao' => trim($input['descricao']),
-            'prioridade' => trim($input['prioridade']),
-            'data_atendimento' => trim($input['data_atendimento']),
-            'hora_atendimento' => trim($input['hora_atendimento']),
-            'solicitante' => trim($input['solicitante']),
-            'telefone_solicitante' => isset($input['telefone_solicitante']) ? trim($input['telefone_solicitante']) : null,
-            'cliente_id' => (int) $input['cliente_id'],
-            'assunto_id' => (int) $input['assunto_id'],
-            'atendente_id' => isset($input['atendente_id']) ? (int) $input['atendente_id'] : null,
-            'status' => 'Aberto' // Status inicial padrão
-        ];
-        
-        $stmt = $pdo->prepare("INSERT INTO atendimentos (descricao, prioridade, data_atendimento, hora_atendimento, solicitante, telefone_solicitante, cliente_id, assunto_id, atendente_id, status, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
-        $stmt->execute(array_values($data));
-        
-        $id = $pdo->lastInsertId();
-        
-        echo json_encode([
-            'success' => true,
-            'message' => 'Atendimento criado com sucesso',
-            'data' => array_merge(['id' => $id], $data)
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao criar atendimento: ' . $e->getMessage()
-        ]);
     } catch (Exception $e) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error' => $e->getMessage()
-        ]);
+        responderErro("Erro geral ao buscar atendimentos: " . $e->getMessage(), 500);
     }
 }
 
-// Função para atualizar um atendimento
-function updateAtendimento($pdo, $id) {
+function handlePost($conn, $empresa_id)
+{
     try {
-        $input = json_decode(file_get_contents('php://input'), true);
-        
-        if (!$input) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Dados JSON inválidos'
-            ]);
-            return;
-        }
+        $data = json_decode(file_get_contents("php://input"));
+        $required_fields = ['cliente_id', 'assunto_id', 'equipamento_id', 'atendente_id', 'descricao', 'prioridade', 'status'];
 
-        // Validação de campos obrigatórios
-        $required_fields = ['descricao', 'prioridade', 'data_atendimento', 'hora_atendimento', 'solicitante', 'cliente_id', 'assunto_id', 'status'];
         foreach ($required_fields as $field) {
-            if (!isset($input[$field]) || empty(trim($input[$field]))) {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => "O campo '{$field}' é obrigatório"
-                ]);
-                return;
+            if (!isset($data->$field)) {
+                responderErro("Campo '$field' é obrigatório", 400);
             }
         }
 
-        // Verificar se o atendimento existe
-        $stmt = $pdo->prepare("SELECT id FROM atendimentos WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        if (!$stmt->fetch()) {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Atendimento não encontrado'
-            ]);
-            return;
+        $sql = "INSERT INTO atendimentos 
+                   (cliente_id, assunto_id, equipamento_id, atendente_id, 
+                    descricao, observacoes, solucao, prioridade, status, 
+                    criado_em, empresa_id) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            responderErro("Erro no prepare (POST): " . $conn->error, 500);
         }
 
-        // Validação dos IDs de cliente e assunto
-        validateForeignKeys($pdo, $input);
-        
-        // Preparar os dados para a atualização
-        $data = [
-            'descricao' => trim($input['descricao']),
-            'prioridade' => trim($input['prioridade']),
-            'data_atendimento' => trim($input['data_atendimento']),
-            'hora_atendimento' => trim($input['hora_atendimento']),
-            'solicitante' => trim($input['solicitante']),
-            'telefone_solicitante' => isset($input['telefone_solicitante']) ? trim($input['telefone_solicitante']) : null,
-            'cliente_id' => (int) $input['cliente_id'],
-            'assunto_id' => (int) $input['assunto_id'],
-            'atendente_id' => isset($input['atendente_id']) ? (int) $input['atendente_id'] : null,
-            'status' => trim($input['status'])
-        ];
-        
-        $stmt = $pdo->prepare("UPDATE atendimentos SET descricao = ?, prioridade = ?, data_atendimento = ?, hora_atendimento = ?, solicitante = ?, telefone_solicitante = ?, cliente_id = ?, assunto_id = ?, atendente_id = ?, status = ?, atualizado_em = NOW() WHERE id = ?");
-        $stmt->execute(array_merge(array_values($data), [$id]));
-        
-        echo json_encode([
-            'success' => true,
-            'message' => 'Atendimento atualizado com sucesso',
-            'data' => array_merge(['id' => $id], $data)
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao atualizar atendimento: ' . $e->getMessage()
-        ]);
+        $cliente_id = $data->cliente_id;
+$assunto_id = $data->assunto_id;
+$equipamento_id = $data->equipamento_id ?? null;
+$atendente_id = $data->atendente_id ?? null;
+$descricao = $data->descricao;
+$observacoes = $data->observacoes ?? '';
+$solucao = $data->solucao ?? '';
+$prioridade = $data->prioridade;
+$status = $data->status;
+
+$stmt->bind_param(
+    "iiiisssssi",
+    $cliente_id,
+    $assunto_id,
+    $equipamento_id,
+    $atendente_id,
+    $descricao,
+    $observacoes,
+    $solucao,
+    $prioridade,
+    $status,
+    $empresa_id
+);
+
+
+        if ($stmt->execute()) {
+            responderSucesso('Atendimento criado com sucesso', ['id' => $conn->insert_id], 201);
+        } else {
+            responderErro('Erro ao criar atendimento: ' . $stmt->error, 500);
+        }
     } catch (Exception $e) {
-        http_response_code(400);
-        echo json_encode([
-            'success' => false,
-            'error' => $e->getMessage()
-        ]);
+        responderErro('Erro ao criar atendimento: ' . $e->getMessage(), 500);
     }
 }
 
-// Função para excluir um atendimento (soft delete)
-function deleteAtendimento($pdo, $id) {
+function handlePut($conn, $empresa_id, $id)
+{
     try {
-        // Verificar se o atendimento existe
-        $stmt = $pdo->prepare("SELECT id FROM atendimentos WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        if (!$stmt->fetch()) {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Atendimento não encontrado'
-            ]);
-            return;
+        $data = json_decode(file_get_contents("php://input"));
+        if (!$id) {
+            responderErro('ID do atendimento é obrigatório', 400);
         }
-        
-        // Realizar soft delete
-        $stmt = $pdo->prepare("UPDATE atendimentos SET removido_em = NOW() WHERE id = ?");
-        $stmt->execute([$id]);
-        
-        echo json_encode([
-            'success' => true,
-            'message' => 'Atendimento excluído com sucesso'
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao excluir atendimento: ' . $e->getMessage()
-        ]);
+
+        $fields = [];
+        $params = [];
+        $types = "";
+
+        foreach (['cliente_id'=>'i','assunto_id'=>'i','equipamento_id'=>'i','atendente_id'=>'i','descricao'=>'s','observacoes'=>'s','solucao'=>'s','prioridade'=>'s','status'=>'s'] as $campo => $tipo) {
+            if (isset($data->$campo)) {
+                $fields[] = "$campo = ?";
+                $params[] = $data->$campo;
+                $types .= $tipo;
+            }
+        }
+
+        if (empty($fields)) {
+            responderErro('Nenhum campo válido para atualizar', 400);
+        }
+
+        $types .= "ii";
+        $params[] = $id;
+        $params[] = $empresa_id;
+
+        $sql = "UPDATE atendimentos 
+                   SET " . implode(', ', $fields) . ", atualizado_em = NOW() 
+                 WHERE id = ? AND empresa_id = ? AND removido_em IS NULL";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            responderErro("Erro no prepare (PUT): " . $conn->error, 500);
+        }
+
+        $stmt->bind_param($types, ...$params);
+
+        if ($stmt->execute()) {
+            responderSucesso('Atendimento atualizado com sucesso');
+        } else {
+            responderErro('Erro ao atualizar atendimento: ' . $stmt->error, 500);
+        }
+    } catch (Exception $e) {
+        responderErro('Erro ao atualizar atendimento: ' . $e->getMessage(), 500);
     }
 }
 
-// Função para validar se as chaves estrangeiras existem
-function validateForeignKeys($pdo, $input) {
-    // Validação de cliente_id
-    $stmt_cliente = $pdo->prepare("SELECT id FROM clientes WHERE id = ? AND removido_em IS NULL");
-    $stmt_cliente->execute([$input['cliente_id']]);
-    if (!$stmt_cliente->fetch()) {
-        throw new Exception('ID do cliente não encontrado ou excluído');
-    }
-    
-    // Validação de assunto_id
-    $stmt_assunto = $pdo->prepare("SELECT id FROM assuntos WHERE id = ? AND removido_em IS NULL");
-    $stmt_assunto->execute([$input['assunto_id']]);
-    if (!$stmt_assunto->fetch()) {
-        throw new Exception('ID do assunto não encontrado ou excluído');
+function handleDelete($conn, $empresa_id, $id)
+{
+    try {
+        if (!$id) {
+            responderErro('ID do atendimento é obrigatório', 400);
+        }
+
+        $sql = "UPDATE atendimentos 
+                   SET removido_em = NOW() 
+                 WHERE id = ? AND empresa_id = ? AND removido_em IS NULL";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            responderErro("Erro no prepare (DELETE): " . $conn->error, 500);
+        }
+        $stmt->bind_param("ii", $id, $empresa_id);
+
+        if ($stmt->execute()) {
+            responderSucesso('Atendimento excluído com sucesso');
+        } else {
+            responderErro('Erro ao excluir atendimento: ' . $stmt->error, 500);
+        }
+    } catch (Exception $e) {
+        responderErro('Erro ao excluir atendimento: ' . $e->getMessage(), 500);
     }
 }
-?>

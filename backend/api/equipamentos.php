@@ -1,416 +1,364 @@
 <?php
-// Configuração de headers CORS mais robusta
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-header('Content-Type: application/json; charset=utf-8');
+/**
+ * API de Equipamentos
+ * Sistema de Gerenciamento de Atendimentos
+ */
 
-// Preflight request (OPTIONS)
+// Habilitar exibição de erros para debug
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Definir modo de desenvolvimento
+define('DEVELOPMENT_MODE', true);
+
+// Definir cabeçalhos CORS
+header("Content-Type: application/json; charset=UTF-8");
+header("Access-Control-Allow-Origin: http://localhost:3000");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With");
+header("Access-Control-Allow-Credentials: true");
+
+// Tratar requisição OPTIONS (pré-flight CORS)
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
-    echo json_encode(['success' => true, 'message' => 'CORS preflight OK']);
-    exit();
+    exit;
 }
 
-// Configuração de erro para debug
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Incluir configurações
+require_once __DIR__ . "/../config/db.php";
+require_once __DIR__ . "/../config/util.php";
 
 try {
-    // Incluir arquivo de configuração do banco
-    $config_path = '../config/db.php';
-    if (!file_exists($config_path)) {
-        throw new Exception('Arquivo de configuração do banco não encontrado: ' . $config_path);
+    // Obter e validar empresa_id
+    $empresa_id = obterEmpresaId();
+    if (!$empresa_id && DEVELOPMENT_MODE) {
+        $empresa_id = 1; // ID padrão para desenvolvimento
     }
     
-    require_once $config_path;
-    
-    // Verificar se a conexão PDO foi estabelecida
-    if (!isset($pdo)) {
-        throw new Exception('Conexão com banco de dados não estabelecida');
+    if (!$empresa_id) {
+        responderErro('ID da empresa não fornecido no cabeçalho X-Empresa-ID', 400);
     }
-    
+
 } catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Erro de configuração: ' . $e->getMessage(),
-        'debug' => [
-            'config_path' => $config_path ?? 'não definido',
-            'file_exists' => file_exists($config_path ?? '') ? 'sim' : 'não'
-        ]
-    ]);
-    exit();
+    error_log("Erro na inicialização da API de equipamentos: " . $e->getMessage());
+    responderErro('Erro interno do servidor', 500);
 }
 
-// Get the request method and path
+// Roteamento das requisições
 $method = $_SERVER['REQUEST_METHOD'];
-$request_uri = $_SERVER['REQUEST_URI'];
-$path = parse_url($request_uri, PHP_URL_PATH);
+$id = $_GET['id'] ?? null;
 
-// Debug info
-$debug_info = [
-    'method' => $method,
-    'request_uri' => $request_uri,
-    'path' => $path,
-    'timestamp' => date('Y-m-d H:i:s')
-];
-
-// Extract ID if present in URL or query string
-$id = null;
-
-// Primeiro, verificar se há ID na query string
-if (isset($_GET['id']) && is_numeric($_GET['id'])) {
-    $id = (int) $_GET['id'];
-} else {
-    // Se não há na query string, procurar na URL
-    $path_parts = explode('/', trim($path, '/'));
-    foreach ($path_parts as $part) {
-        if (is_numeric($part)) {
-            $id = (int) $part;
-            break;
-        }
-    }
+switch ($method) {
+    case 'GET':
+        handleGet($conn, $empresa_id, $id);
+        break;
+        
+    case 'POST':
+        handlePost($conn, $empresa_id);
+        break;
+        
+    case 'PUT':
+        handlePut($conn, $empresa_id);
+        break;
+        
+    case 'DELETE':
+        handleDelete($conn, $empresa_id, $id);
+        break;
+        
+    default:
+        responderErro('Método não permitido', 405);
+        break;
 }
 
-try {
-    switch ($method) {
-        case 'GET':
-            if ($id) {
-                getEquipamento($pdo, $id);
-            } else {
-                getAllEquipamentos($pdo);
-            }
-            break;
-            
-        case 'POST':
-            createEquipamento($pdo);
-            break;
-            
-        case 'PUT':
-            if ($id) {
-                updateEquipamento($pdo, $id);
-            } else {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'ID é obrigatório para atualização',
-                    'debug' => $debug_info
-                ]);
-            }
-            break;
-            
-        case 'DELETE':
-            if ($id) {
-                deleteEquipamento($pdo, $id);
-            } else {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'ID é obrigatório para exclusão',
-                    'debug' => $debug_info
-                ]);
-            }
-            break;
-            
-        default:
-            http_response_code(405);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Método não permitido: ' . $method,
-                'debug' => $debug_info
-            ]);
-            break;
-    }
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Erro interno do servidor: ' . $e->getMessage(),
-        'debug' => $debug_info
-    ]);
-}
-
-// Função para listar todos os equipamentos
-function getAllEquipamentos($pdo) {
+/**
+ * Listar equipamentos ou buscar por ID
+ */
+function handleGet($conn, $empresa_id, $id) {
     try {
-        // Verificar se a tabela existe
-        $stmt = $pdo->prepare("SHOW TABLES LIKE 'equipamentos'");
-        $stmt->execute();
-        if (!$stmt->fetch()) {
-            throw new Exception('Tabela "equipamentos" não encontrada no banco de dados');
-        }
-        
-        // Buscar equipamentos
-        $stmt = $pdo->prepare("SELECT id, nome, marca, descricao, numero_de_serie, patrimonio, criado_em, atualizado_em FROM equipamentos WHERE removido_em IS NULL ORDER BY nome ASC");
-        $stmt->execute();
-        $equipamentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        echo json_encode([
-            'success' => true,
-            'data' => $equipamentos,
-            'total' => count($equipamentos),
-            'message' => 'Equipamentos carregados com sucesso'
-        ]);
-        
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao buscar equipamentos: ' . $e->getMessage(),
-            'sql_error' => $e->getCode()
-        ]);
-    }
-}
-
-// Função para buscar um equipamento específico
-function getEquipamento($pdo, $id) {
-    try {
-        $stmt = $pdo->prepare("SELECT id, nome, marca, descricao, numero_de_serie, patrimonio, criado_em, atualizado_em FROM equipamentos WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        $equipamento = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($equipamento) {
-            echo json_encode([
-                'success' => true,
-                'data' => $equipamento
-            ]);
+        if ($id) {
+            // Buscar equipamento específico
+            $stmt = $conn->prepare("
+                SELECT e.*, c.nome AS nome_cliente 
+                FROM equipamentos e
+                LEFT JOIN clientes c ON e.cliente_id = c.id
+                WHERE e.id = ? AND e.empresa_id = ? AND e.removido_em IS NULL
+            ");
+            if (!$stmt) {
+                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+            }
+            $stmt->bind_param("ii", $id, $empresa_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $equipamento = $result->fetch_assoc();
+            
+            if (!$equipamento) {
+                responderErro('Equipamento não encontrado', 404);
+            }
+            
+            // Converter ativo para boolean
+            // $equipamento['status'] = (bool)$equipamento['status'];
+            
+            responderSucesso('Equipamento encontrado', $equipamento);
+            
         } else {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Equipamento não encontrado'
-            ]);
+            // Listar todos os equipamentos
+            $stmt = $conn->prepare("
+                SELECT e.*, c.nome AS nome_cliente 
+                FROM equipamentos e
+                LEFT JOIN clientes c ON e.cliente_id = c.id
+                WHERE e.empresa_id = ? AND e.removido_em IS NULL 
+                ORDER BY e.id DESC
+            ");
+            if (!$stmt) {
+                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+            }
+            $stmt->bind_param("i", $empresa_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $equipamentos = $result->fetch_all(MYSQLI_ASSOC);
+            
+            // Converter ativo para boolean em todos os registros
+            foreach ($equipamentos as &$equipamento) {
+                // $equipamento['status'] = (bool)$equipamento['status'];
+            }
+            
+            responderSucesso('Equipamentos listados com sucesso', $equipamentos);
         }
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao buscar equipamento: ' . $e->getMessage()
-        ]);
+        
+    } catch (Exception $e) {
+        error_log("Erro ao buscar equipamentos: " . $e->getMessage());
+        responderErro('Erro ao buscar equipamentos: ' . $e->getMessage(), 500);
     }
 }
 
-// Função para criar um novo equipamento
-function createEquipamento($pdo) {
+/**
+ * Criar novo equipamento
+ */
+function handlePost($conn, $empresa_id) {
     try {
         $input = json_decode(file_get_contents('php://input'), true);
         
-        if (!$input) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Dados JSON inválidos'
-            ]);
-            return;
-        }
-
-        // Validação de campos obrigatórios
-        $required_fields = ['nome', 'marca'];
-        foreach ($required_fields as $field) {
-            if (!isset($input[$field]) || empty(trim($input[$field]))) {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => "O campo '{$field}' é obrigatório"
-                ]);
-                return;
-            }
+        // Validar dados obrigatórios
+        if (!$input || !isset($input['nome']) || empty(trim($input['nome']))) {
+            responderErro('Nome do equipamento é obrigatório', 400);
         }
         
-        // Verificação de unicidade para número de série (se fornecido)
-        if (isset($input['numero_de_serie']) && !empty(trim($input['numero_de_serie']))) {
-            $stmt = $pdo->prepare("SELECT id FROM equipamentos WHERE numero_de_serie = ? AND removido_em IS NULL");
-            $stmt->execute([trim($input['numero_de_serie'])]);
-            if ($stmt->fetch()) {
-                http_response_code(409);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'Já existe um equipamento com este número de série'
-                ]);
-                return;
-            }
-        }
-
-        // Verificação de unicidade para patrimônio (se fornecido)
-        if (isset($input['patrimonio']) && !empty(trim($input['patrimonio']))) {
-            $stmt = $pdo->prepare("SELECT id FROM equipamentos WHERE patrimonio = ? AND removido_em IS NULL");
-            $stmt->execute([trim($input['patrimonio'])]);
-            if ($stmt->fetch()) {
-                http_response_code(409);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'Já existe um equipamento com este número de patrimônio'
-                ]);
-                return;
-            }
+        $nome = trim($input['nome']);
+        $marca = isset($input['marca']) ? trim($input['marca']) : null;
+        $modelo = isset($input['modelo']) ? trim($input['modelo']) : null;
+        $numero_serie = isset($input['numero_serie']) ? trim($input['numero_serie']) : null;
+        $patrimonio = isset($input['patrimonio']) ? trim($input['patrimonio']) : null;
+        $cliente_id = isset($input['cliente_id']) ? (int)$input['cliente_id'] : null;
+        $descricao = isset($input['descricao']) ? trim($input['descricao']) : null;
+        $data_aquisicao = isset($input['data_aquisicao']) ? trim($input['data_aquisicao']) : null;
+        $valor_aquisicao = isset($input['valor_aquisicao']) ? (float)$input['valor_aquisicao'] : null;
+        $garantia_ate = isset($input['garantia_ate']) ? trim($input['garantia_ate']) : null;
+        $localizacao = isset($input['localizacao']) ? trim($input['localizacao']) : null;
+        $status = isset($input['status']) ? (int)$input['status'] : 1;
+        
+        // Inserir novo equipamento
+        $stmt = $conn->prepare("
+            INSERT INTO equipamentos (nome, marca, modelo, numero_serie, patrimonio, cliente_id, descricao, data_aquisicao, valor_aquisicao, garantia_ate, localizacao, status, empresa_id) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
         }
         
-        // Preparar os dados para a inserção
-        $data = [
-            'nome' => trim($input['nome']),
-            'marca' => trim($input['marca']),
-            'descricao' => isset($input['descricao']) ? trim($input['descricao']) : null,
-            'numero_de_serie' => isset($input['numero_de_serie']) && !empty(trim($input['numero_de_serie'])) ? trim($input['numero_de_serie']) : null,
-            'patrimonio' => isset($input['patrimonio']) && !empty(trim($input['patrimonio'])) ? trim($input['patrimonio']) : null
-        ];
+        $stmt->bind_param("sssssiisdssii", 
+            $nome, $marca, $modelo, $numero_serie, $patrimonio, $cliente_id, $descricao, $data_aquisicao, $valor_aquisicao, $garantia_ate, $localizacao, $status, $empresa_id
+        );
         
-        $stmt = $pdo->prepare("INSERT INTO equipamentos (nome, marca, descricao, numero_de_serie, patrimonio, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, NOW(), NOW())");
-        $stmt->execute(array_values($data));
+        if ($stmt->execute()) {
+            $lastId = $conn->insert_id;
+            
+            // Buscar o registro criado para retornar
+            $stmt = $conn->prepare("
+                SELECT e.*, c.nome AS nome_cliente 
+                FROM equipamentos e
+                LEFT JOIN clientes c ON e.cliente_id = c.id
+                WHERE e.id = ?
+            ");
+            $stmt->bind_param("i", $lastId);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $equipamento = $result->fetch_assoc();
+            $equipamento['status'] = (bool)$equipamento['status'];
+            
+            responderSucesso('Equipamento criado com sucesso', $equipamento, 201);
+        } else {
+            responderErro('Erro ao criar equipamento: ' . $stmt->error, 500);
+        }
         
-        $id = $pdo->lastInsertId();
-        
-        echo json_encode([
-            'success' => true,
-            'message' => 'Equipamento criado com sucesso',
-            'data' => array_merge(['id' => $id], $data)
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao criar equipamento: ' . $e->getMessage()
-        ]);
+    } catch (Exception $e) {
+        error_log("Erro ao criar equipamento: " . $e->getMessage());
+        responderErro('Dados inválidos: ' . $e->getMessage(), 400);
     }
 }
 
-// Função para atualizar um equipamento
-function updateEquipamento($pdo, $id) {
+/**
+ * Atualizar equipamento
+ */
+function handlePut($conn, $empresa_id) {
     try {
         $input = json_decode(file_get_contents('php://input'), true);
-        
-        if (!$input) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Dados JSON inválidos'
-            ]);
-            return;
-        }
 
-        // Validação de campos obrigatórios
-        $required_fields = ['nome', 'marca'];
-        foreach ($required_fields as $field) {
-            if (!isset($input[$field]) || empty(trim($input[$field]))) {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => "O campo '{$field}' é obrigatório"
-                ]);
-                return;
-            }
+
+        if (!isset($input['id'])) {
+            responderErro('ID do equipamento é obrigatório', 400);
         }
+        $id = $input['id'];
         
         // Verificar se o equipamento existe
-        $stmt = $pdo->prepare("SELECT id FROM equipamentos WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        if (!$stmt->fetch()) {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Equipamento não encontrado'
-            ]);
-            return;
+        $stmt = $conn->prepare("
+            SELECT id FROM equipamentos 
+            WHERE id = ? AND empresa_id = ? AND removido_em IS NULL
+        ");
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+        }
+        $stmt->bind_param("ii", $id, $empresa_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows === 0) {
+            responderErro('Equipamento não encontrado', 404);
         }
         
-        // Verificação de unicidade para número de série (se fornecido e diferente do atual)
-        if (isset($input['numero_de_serie']) && !empty(trim($input['numero_de_serie']))) {
-            $stmt = $pdo->prepare("SELECT id FROM equipamentos WHERE numero_de_serie = ? AND id != ? AND removido_em IS NULL");
-            $stmt->execute([trim($input['numero_de_serie']), $id]);
-            if ($stmt->fetch()) {
-                http_response_code(409);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'Já existe outro equipamento com este número de série'
-                ]);
-                return;
+        // Preparar campos para atualização
+        $fields = [];
+        $params = [];
+        $types = '';
+        
+        $allowed_fields = ['nome', 'marca', 'modelo', 'numero_serie', 'patrimonio', 'cliente_id', 'descricao', 'data_aquisicao', 'valor_aquisicao', 'garantia_ate', 'localizacao', 'status'];
+        
+        foreach ($input as $key => $value) {
+            if (in_array($key, $allowed_fields)) {
+                if (in_array($key, ['nome', 'marca', 'modelo', 'numero_serie', 'patrimonio', 'descricao', 'data_aquisicao', 'garantia_ate', 'localizacao'])) {
+                    $value = trim($value);
+                    $types .= 's';
+                }
+                if ($key === 'cliente_id') {
+                    $value = (int)$value;
+                    $types .= 'i';
+                }
+                if ($key === 'status') {
+                    $value = (bool)$value;
+                    $types .= 'i'; // Still 'i' because it's stored as tinyint(1) in DB
+                }
+                if ($key === 'valor_aquisicao') {
+                    $value = (float)$value;
+                    $types .= 'd';
+                }
+                
+                $fields[] = "{$key} = ?";
+                $params[] = $value;
             }
         }
-
-        // Verificação de unicidade para patrimônio (se fornecido e diferente do atual)
-        if (isset($input['patrimonio']) && !empty(trim($input['patrimonio']))) {
-            $stmt = $pdo->prepare("SELECT id FROM equipamentos WHERE patrimonio = ? AND id != ? AND removido_em IS NULL");
-            $stmt->execute([trim($input['patrimonio']), $id]);
-            if ($stmt->fetch()) {
-                http_response_code(409);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'Já existe outro equipamento com este número de patrimônio'
-                ]);
-                return;
-            }
+        
+        if (empty($fields)) {
+            responderErro('Nenhum campo válido para atualizar', 400);
         }
         
-        // Preparar os dados para a atualização
-        $data = [
-            'nome' => trim($input['nome']),
-            'marca' => trim($input['marca']),
-            'descricao' => isset($input['descricao']) ? trim($input['descricao']) : null,
-            'numero_de_serie' => isset($input['numero_de_serie']) && !empty(trim($input['numero_de_serie'])) ? trim($input['numero_de_serie']) : null,
-            'patrimonio' => isset($input['patrimonio']) && !empty(trim($input['patrimonio'])) ? trim($input['patrimonio']) : null
-        ];
+        $types .= 'ii';
+        $params[] = $id;
+        $params[] = $empresa_id;
         
-        $stmt = $pdo->prepare("UPDATE equipamentos SET nome = ?, marca = ?, descricao = ?, numero_de_serie = ?, patrimonio = ?, atualizado_em = NOW() WHERE id = ?");
-        $stmt->execute(array_merge(array_values($data), [$id]));
+        // Atualizar equipamento
+        $sql = "UPDATE equipamentos SET " . implode(', ', $fields) . " WHERE id = ? AND empresa_id = ?";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+        }
+        $stmt->bind_param($types, ...$params);
         
-        echo json_encode([
-            'success' => true,
-            'message' => 'Equipamento atualizado com sucesso',
-            'data' => array_merge(['id' => $id], $data)
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao atualizar equipamento: ' . $e->getMessage()
-        ]);
+        if ($stmt->execute()) {
+            // Buscar o registro atualizado para retornar
+            $stmt = $conn->prepare("
+                SELECT e.*, c.nome AS nome_cliente 
+                FROM equipamentos e
+                LEFT JOIN clientes c ON e.cliente_id = c.id
+                WHERE e.id = ? AND e.empresa_id = ?
+            ");
+            $stmt->bind_param("ii", $id, $empresa_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $equipamento = $result->fetch_assoc();
+            $equipamento['status'] = (bool)$equipamento['status'];
+            
+            responderSucesso('Equipamento atualizado com sucesso', $equipamento);
+        } else {
+            responderErro('Erro ao atualizar equipamento: ' . $stmt->error, 500);
+        }
+        
+    } catch (Exception $e) {
+        error_log("Erro geral ao atualizar equipamento: " . $e->getMessage());
+        responderErro('Dados inválidos: ' . $e->getMessage(), 400);
     }
 }
 
-// Função para excluir um equipamento (soft delete)
-function deleteEquipamento($pdo, $id) {
+/**
+ * Excluir equipamento (soft delete)
+ */
+function handleDelete($conn, $empresa_id, $id) {
     try {
-        // Verificar se o equipamento existe
-        $stmt = $pdo->prepare("SELECT id FROM equipamentos WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        if (!$stmt->fetch()) {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Equipamento não encontrado'
-            ]);
-            return;
+        if (!$id) {
+            responderErro('ID do equipamento é obrigatório', 400);
         }
         
-        // Verificar se o equipamento está sendo usado em algum cliente
-        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM clientes_equipamentos WHERE equipamento_id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        // Verificar se o equipamento existe e pertence à empresa
+        $stmt = $conn->prepare("
+            SELECT id FROM equipamentos 
+            WHERE id = ? AND empresa_id = ? AND removido_em IS NULL
+        ");
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+        }
+        $stmt->bind_param("ii", $id, $empresa_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
         
-        if ($result['count'] > 0) {
-            http_response_code(409);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Não é possível excluir este equipamento pois ele está sendo usado em um ou mais clientes'
-            ]);
-            return;
+        if ($result->num_rows === 0) {
+            responderErro('Equipamento não encontrado', 404);
+        }
+        
+        // Verificar se o equipamento está sendo usado em atendimentos
+        $stmt = $conn->prepare("
+            SELECT COUNT(*) as count FROM atendimentos 
+            WHERE equipamento_id = ? AND empresa_id = ? AND removido_em IS NULL
+        ");
+        if ($stmt) {
+            $stmt->bind_param("ii", $id, $empresa_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $count = $result->fetch_assoc()['count'];
+            
+            if ($count > 0) {
+                responderErro('Não é possível excluir este equipamento pois ele possui atendimentos cadastrados', 409);
+            }
         }
         
         // Realizar soft delete
-        $stmt = $pdo->prepare("UPDATE equipamentos SET removido_em = NOW() WHERE id = ?");
-        $stmt->execute([$id]);
+        $stmt = $conn->prepare("
+            UPDATE equipamentos 
+            SET removido_em = NOW() 
+            WHERE id = ? AND empresa_id = ?
+        ");
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta de exclusão: " . $conn->error, 500);
+        }
+        $stmt->bind_param("ii", $id, $empresa_id);
         
-        echo json_encode([
-            'success' => true,
-            'message' => 'Equipamento excluído com sucesso'
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao excluir equipamento: ' . $e->getMessage()
-        ]);
+        if ($stmt->execute()) {
+            responderSucesso('Equipamento excluído com sucesso');
+        } else {
+            responderErro('Erro ao excluir equipamento: ' . $stmt->error, 500);
+        }
+        
+    } catch (Exception $e) {
+        responderErro('Erro ao excluir equipamento: ' . $e->getMessage(), 500);
     }
 }
-?>
 
+?>

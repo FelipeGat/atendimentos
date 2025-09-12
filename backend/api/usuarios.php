@@ -1,458 +1,314 @@
 <?php
-// Configuração de headers CORS mais robusta
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-header('Content-Type: application/json; charset=utf-8');
+/**
+ * API de Usuários
+ * Sistema de Gerenciamento de Atendimentos
+ */
 
-// Preflight request (OPTIONS)
+// Habilitar exibição de erros para debug
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Definir modo de desenvolvimento
+define('DEVELOPMENT_MODE', true);
+
+// Definir cabeçalhos CORS
+header("Content-Type: application/json; charset=UTF-8");
+header("Access-Control-Allow-Origin: http://localhost:3000");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With, X-HTTP-Method-Override");
+header("Access-Control-Allow-Credentials: true");
+
+// Tratar requisição OPTIONS (pré-flight CORS)
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
-    echo json_encode(['success' => true, 'message' => 'CORS preflight OK']);
-    exit();
+    exit;
 }
 
-// Configuração de erro para debug
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Incluir configurações
+require_once __DIR__ . "/../config/db.php";
+require_once __DIR__ . "/../config/util.php";
 
 try {
-    // Incluir arquivo de configuração do banco
-    $config_path = '../config/db.php';
-    if (!file_exists($config_path)) {
-        throw new Exception('Arquivo de configuração do banco não encontrado: ' . $config_path);
+    $empresa_id = obterEmpresaId();
+    if (!$empresa_id && DEVELOPMENT_MODE) {
+        $empresa_id = 1;
     }
-    
-    require_once $config_path;
-    
-    // Verificar se a conexão PDO foi estabelecida
-    if (!isset($pdo)) {
-        throw new Exception('Conexão com banco de dados não estabelecida');
+
+    if (!$empresa_id) {
+        responderErro('ID da empresa não fornecido no cabeçalho X-Empresa-ID', 400);
     }
-    
+
 } catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Erro de configuração: ' . $e->getMessage(),
-        'debug' => [
-            'config_path' => $config_path ?? 'não definido',
-            'file_exists' => file_exists($config_path ?? '') ? 'sim' : 'não'
-        ]
-    ]);
-    exit();
+    error_log("Erro na inicialização da API de usuários: " . $e->getMessage());
+    responderErro('Erro interno do servidor', 500);
 }
 
-// Get the request method and path
+// Roteamento
 $method = $_SERVER['REQUEST_METHOD'];
-$request_uri = $_SERVER['REQUEST_URI'];
-$path = parse_url($request_uri, PHP_URL_PATH);
+$id = $_GET['id'] ?? null;
 
-// Debug info
-$debug_info = [
-    'method' => $method,
-    'request_uri' => $request_uri,
-    'path' => $path,
-    'timestamp' => date('Y-m-d H:i:s')
-];
-
-// Extract ID if present in URL or query string
-$id = null;
-
-// Primeiro, verificar se há ID na query string
-if (isset($_GET['id']) && is_numeric($_GET['id'])) {
-    $id = (int) $_GET['id'];
-} else {
-    // Se não há na query string, procurar na URL
-    $path_parts = explode('/', trim($path, '/'));
-    foreach ($path_parts as $part) {
-        if (is_numeric($part)) {
-            $id = (int) $part;
-            break;
-        }
-    }
+// Suporte a X-HTTP-Method-Override
+if ($method === 'POST' && isset($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'])) {
+    $method = strtoupper($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']);
 }
 
-try {
-    switch ($method) {
-        case 'GET':
-            if ($id) {
-                getUsuario($pdo, $id);
-            } else {
-                getAllUsuarios($pdo);
-            }
-            break;
-            
-        case 'POST':
-            createUsuario($pdo);
-            break;
-            
-        case 'PUT':
-            if ($id) {
-                updateUsuario($pdo, $id);
-            } else {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'ID é obrigatório para atualização',
-                    'debug' => $debug_info
-                ]);
-            }
-            break;
-            
-        case 'DELETE':
-            if ($id) {
-                deleteUsuario($pdo, $id);
-            } else {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'ID é obrigatório para exclusão',
-                    'debug' => $debug_info
-                ]);
-            }
-            break;
-            
-        default:
-            http_response_code(405);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Método não permitido: ' . $method,
-                'debug' => $debug_info
-            ]);
-            break;
-    }
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Erro interno do servidor: ' . $e->getMessage(),
-        'debug' => $debug_info
-    ]);
+switch ($method) {
+    case 'GET':
+        handleGet($conn, $empresa_id, $id);
+        break;
+
+    case 'POST':
+        handlePost($conn, $empresa_id);
+        break;
+
+    case 'PUT':
+        handlePut($conn, $empresa_id, $id);
+        break;
+
+    case 'DELETE':
+        handleDelete($conn, $empresa_id, $id);
+        break;
+
+    default:
+        responderErro('Método não permitido', 405);
+        break;
 }
 
-// Função para listar todos os usuários
-function getAllUsuarios($pdo) {
+/**
+ * Buscar usuário(s)
+ */
+function handleGet($conn, $empresa_id, $id) {
     try {
-        // Verificar se a tabela existe
-        $stmt = $pdo->prepare("SHOW TABLES LIKE 'usuarios'");
-        $stmt->execute();
-        if (!$stmt->fetch()) {
-            throw new Exception('Tabela "usuarios" não encontrada no banco de dados');
-        }
-        
-        // Buscar usuários (não retorna a senha por segurança)
-        $stmt = $pdo->prepare("SELECT id, nome, email, cpf, telefone, bloqueado, perfil, criado_em, atualizado_em, foto FROM usuarios WHERE removido_em IS NULL ORDER BY nome ASC");
-        $stmt->execute();
-        $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        echo json_encode([
-            'success' => true,
-            'data' => $usuarios,
-            'total' => count($usuarios),
-            'message' => 'Usuários carregados com sucesso'
-        ]);
-        
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao buscar usuários: ' . $e->getMessage(),
-            'sql_error' => $e->getCode()
-        ]);
-    }
-}
+        if ($id) {
+            $stmt = $conn->prepare("
+                SELECT id, nome, cpf, email, telefone, bloqueado, perfil, foto, criado_em, atualizado_em
+                FROM usuarios
+                WHERE id = ? AND removido_em IS NULL
+            ");
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+            $usuario = $stmt->get_result()->fetch_assoc();
 
-// Função para buscar um usuário específico
-function getUsuario($pdo, $id) {
-    try {
-        $stmt = $pdo->prepare("SELECT id, nome, email, cpf, telefone, bloqueado, perfil, criado_em, atualizado_em, foto FROM usuarios WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($usuario) {
-            echo json_encode([
-                'success' => true,
-                'data' => $usuario
-            ]);
+            if ($usuario) {
+                $usuario['bloqueado'] = (int)$usuario['bloqueado'];
+                responderSucesso('Usuário encontrado', $usuario);
+            } else {
+                responderErro('Usuário não encontrado', 404);
+            }
+
         } else {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Usuário não encontrado'
-            ]);
+            $stmt = $conn->prepare("
+                SELECT id, nome, cpf, email, telefone, bloqueado, perfil, foto, criado_em, atualizado_em
+                FROM usuarios
+                WHERE removido_em IS NULL
+                ORDER BY nome ASC
+            ");
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $usuarios = [];
+
+            while ($row = $result->fetch_assoc()) {
+                $row['bloqueado'] = (int)$row['bloqueado'];
+                $usuarios[] = $row;
+            }
+
+            responderSucesso('Usuários listados com sucesso', $usuarios);
         }
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao buscar usuário: ' . $e->getMessage()
-        ]);
+
+    } catch (Exception $e) {
+        error_log("Erro ao buscar usuários: " . $e->getMessage());
+        responderErro('Erro interno ao buscar usuários', 500);
     }
 }
 
-// Função para criar um novo usuário
-function createUsuario($pdo) {
+/**
+ * Criar novo usuário
+ */
+function handlePost($conn, $empresa_id) {
     try {
-        $input = json_decode(file_get_contents('php://input'), true);
-        
-        if (!$input) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Dados JSON inválidos'
-            ]);
-            return;
+        $nome       = $_POST['nome'] ?? null;
+        $cpf        = isset($_POST['cpf']) ? preg_replace('/\D/', '', $_POST['cpf']) : null;
+        $email      = isset($_POST['email']) ? strtolower(trim($_POST['email'])) : null;
+        $telefone   = $_POST['telefone'] ?? null;
+        $senha      = $_POST['senha'] ?? null;
+        $perfil     = $_POST['perfil'] ?? 'Usuario';
+        $bloqueado  = isset($_POST['bloqueado']) ? (int)$_POST['bloqueado'] : 0;
+
+        // Upload da foto
+        $fotoPath = salvarFoto($_FILES['foto'] ?? null);
+
+        if (!$nome) responderErro('Nome é obrigatório', 400);
+        if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) responderErro('Email inválido', 400);
+        if (!$senha || strlen($senha) < 6) responderErro('Senha deve ter pelo menos 6 caracteres', 400);
+
+        $perfis_validos = ['Admin', 'Tecnico', 'Usuario'];
+        if (!in_array($perfil, $perfis_validos)) responderErro('Perfil inválido', 400);
+
+        if ($cpf && strlen($cpf) !== 11) responderErro('CPF inválido', 400);
+
+        // Duplicidade
+        $stmt = $conn->prepare("SELECT id FROM usuarios WHERE email = ? AND removido_em IS NULL");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        if ($stmt->get_result()->num_rows > 0) responderErro('Já existe um usuário com este email', 409);
+
+        if ($cpf) {
+            $stmt = $conn->prepare("SELECT id FROM usuarios WHERE cpf = ? AND removido_em IS NULL");
+            $stmt->bind_param("s", $cpf);
+            $stmt->execute();
+            if ($stmt->get_result()->num_rows > 0) responderErro('CPF já cadastrado', 409);
         }
 
-        // Validação de campos obrigatórios
-        $required_fields = ['nome', 'email', 'cpf', 'senha', 'perfil'];
-        foreach ($required_fields as $field) {
-            if (!isset($input[$field]) || empty(trim($input[$field]))) {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => "O campo '{$field}' é obrigatório"
-                ]);
-                return;
-            }
-        }
-        
-        // Validação do perfil
-        $perfis_validos = ['atendente', 'gerente', 'admin'];
-        if (!in_array(trim($input['perfil']), $perfis_validos)) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Perfil inválido. Valores aceitos: ' . implode(', ', $perfis_validos)
-            ]);
-            return;
-        }
-        
-        // Verificação de unicidade para CPF e Email
-        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE (cpf = ? OR email = ?) AND removido_em IS NULL");
-        $stmt->execute([trim($input['cpf']), trim($input['email'])]);
-        if ($stmt->fetch()) {
-            http_response_code(409);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Já existe um usuário com este CPF ou Email'
-            ]);
-            return;
+        $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
+        $stmt = $conn->prepare("
+            INSERT INTO usuarios (nome, cpf, email, senha, telefone, bloqueado, perfil, foto)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->bind_param("sssssiis", $nome, $cpf, $email, $senha_hash, $telefone, $bloqueado, $perfil, $fotoPath);
+
+        if ($stmt->execute()) {
+            responderSucesso('Usuário criado com sucesso', ['id' => $conn->insert_id], 201);
+        } else {
+            responderErro('Erro ao criar usuário: ' . $stmt->error, 500);
         }
 
-        // Validação da senha (mínimo 6 caracteres)
-        if (strlen(trim($input['senha'])) < 6) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'A senha deve ter pelo menos 6 caracteres'
-            ]);
-            return;
-        }
-
-        // Hash da senha
-        $hashed_password = password_hash(trim($input['senha']), PASSWORD_DEFAULT);
-
-        // Preparar os dados para a inserção
-        $data = [
-            'nome' => trim($input['nome']),
-            'cpf' => trim($input['cpf']),
-            'email' => trim($input['email']),
-            'senha' => $hashed_password,
-            'telefone' => isset($input['telefone']) ? trim($input['telefone']) : null,
-            'bloqueado' => isset($input['bloqueado']) ? (int)$input['bloqueado'] : 0,
-            'perfil' => trim($input['perfil']),
-            'foto' => isset($input['foto']) ? trim($input['foto']) : null
-        ];
-        
-        $stmt = $pdo->prepare("INSERT INTO usuarios (nome, cpf, email, senha, telefone, bloqueado, perfil, foto, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())");
-        $stmt->execute(array_values($data));
-        
-        $id = $pdo->lastInsertId();
-        
-        // Remover a senha do retorno por segurança
-        unset($data['senha']);
-        
-        echo json_encode([
-            'success' => true,
-            'message' => 'Usuário criado com sucesso',
-            'data' => array_merge(['id' => $id], $data)
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao criar usuário: ' . $e->getMessage()
-        ]);
+    } catch (Exception $e) {
+        responderErro('Erro interno: ' . $e->getMessage(), 500);
     }
 }
 
-// Função para atualizar um usuário
-function updateUsuario($pdo, $id) {
+/**
+ * Atualizar usuário
+ */
+function handlePut($conn, $empresa_id, $id) {
     try {
-        $input = json_decode(file_get_contents('php://input'), true);
-        
-        if (!$input) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Dados JSON inválidos'
-            ]);
-            return;
-        }
+        if (!$id) responderErro('ID do usuário não fornecido', 400);
 
-        // Validação de campos obrigatórios (senha não é obrigatória na edição)
-        $required_fields = ['nome', 'email', 'cpf', 'perfil'];
-        foreach ($required_fields as $field) {
-            if (!isset($input[$field]) || empty(trim($input[$field]))) {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => "O campo '{$field}' é obrigatório"
-                ]);
-                return;
+        $nome       = $_POST['nome'] ?? null;
+        $cpf        = isset($_POST['cpf']) ? preg_replace('/\D/', '', $_POST['cpf']) : null;
+        $email      = $_POST['email'] ?? null;
+        $telefone   = $_POST['telefone'] ?? null;
+        $senha      = $_POST['senha'] ?? null;
+        $perfil     = $_POST['perfil'] ?? null;
+        $bloqueado  = isset($_POST['bloqueado']) ? (int)$_POST['bloqueado'] : 0;
+
+        if (!$nome) responderErro('Nome é obrigatório', 400);
+        if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) responderErro('Email inválido', 400);
+
+        $perfis_validos = ['Admin', 'Tecnico', 'Usuario'];
+        if (!in_array($perfil, $perfis_validos)) responderErro('Perfil inválido', 400);
+
+        if ($cpf && strlen($cpf) !== 11) responderErro('CPF inválido', 400);
+
+        // Verifica usuário existente
+        $stmt = $conn->prepare("SELECT foto FROM usuarios WHERE id = ? AND removido_em IS NULL");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $existing = $stmt->get_result()->fetch_assoc();
+        if (!$existing) responderErro('Usuário não encontrado', 404);
+
+        $oldFotoPath = $existing['foto'];
+
+        // Upload nova foto
+        $fotoPath = $oldFotoPath;
+        if (!empty($_FILES['foto']['name'])) {
+            if ($oldFotoPath && file_exists(__DIR__ . '/' . $oldFotoPath)) {
+                unlink(__DIR__ . '/' . $oldFotoPath);
             }
-        }
-        
-        // Validação do perfil
-        $perfis_validos = ['atendente', 'gerente', 'admin'];
-        if (!in_array(trim($input['perfil']), $perfis_validos)) {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Perfil inválido. Valores aceitos: ' . implode(', ', $perfis_validos)
-            ]);
-            return;
-        }
-        
-        // Verificar se o usuário existe
-        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        if (!$stmt->fetch()) {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Usuário não encontrado'
-            ]);
-            return;
-        }
-        
-        // Verificar se já existe outro usuário com o mesmo CPF ou Email
-        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE (cpf = ? OR email = ?) AND id != ? AND removido_em IS NULL");
-        $stmt->execute([trim($input['cpf']), trim($input['email']), $id]);
-        if ($stmt->fetch()) {
-            http_response_code(409);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Já existe outro usuário com este CPF ou Email'
-            ]);
-            return;
+            $fotoPath = salvarFoto($_FILES['foto']);
         }
 
-        // Prepara a query e os dados para atualização
-        $query = "UPDATE usuarios SET nome = ?, cpf = ?, email = ?, telefone = ?, bloqueado = ?, perfil = ?, foto = ?, atualizado_em = NOW()";
-        $params = [
-            trim($input['nome']),
-            trim($input['cpf']),
-            trim($input['email']),
-            isset($input['telefone']) ? trim($input['telefone']) : null,
-            isset($input['bloqueado']) ? (int)$input['bloqueado'] : 0,
-            trim($input['perfil']),
-            isset($input['foto']) ? trim($input['foto']) : null
-        ];
+        // Monta query
+        $query = "UPDATE usuarios SET nome=?, email=?, telefone=?, cpf=?, perfil=?, bloqueado=?, foto=?, atualizado_em=NOW()";
+        $params = "ssssiis";
+        $data = [$nome, $email, $telefone, $cpf, $perfil, $bloqueado, $fotoPath];
 
-        // Se uma nova senha for fornecida, adicione-a à query e aos parâmetros
-        if (isset($input['senha']) && !empty(trim($input['senha']))) {
-            // Validação da senha (mínimo 6 caracteres)
-            if (strlen(trim($input['senha'])) < 6) {
-                http_response_code(400);
-                echo json_encode([
-                    'success' => false,
-                    'error' => 'A senha deve ter pelo menos 6 caracteres'
-                ]);
-                return;
-            }
+        if ($senha) {
+            $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
+            $query .= ", senha=?";
+            $params .= "s";
+            $data[] = $senha_hash;
+        }
+
+        $query .= " WHERE id=?";
+        $params .= "i";
+        $data[] = $id;
+
+        $stmt = $conn->prepare($query);
+        $stmt->bind_param($params, ...$data);
+
+        if ($stmt->execute()) {
+            // Busca o usuário atualizado para retornar na resposta
+            $stmt = $conn->prepare("
+                SELECT id, nome, cpf, email, telefone, bloqueado, perfil, foto, criado_em, atualizado_em
+                FROM usuarios
+                WHERE id = ? AND removido_em IS NULL
+            ");
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+            $updatedUser = $stmt->get_result()->fetch_assoc();
             
-            $hashed_password = password_hash(trim($input['senha']), PASSWORD_DEFAULT);
-            $query .= ", senha = ?";
-            $params[] = $hashed_password;
+            if ($updatedUser) {
+                $updatedUser['bloqueado'] = (int)$updatedUser['bloqueado'];
+                // Retorna o objeto completo do usuário
+                responderSucesso('Usuário atualizado com sucesso', $updatedUser);
+            } else {
+                responderErro('Erro ao buscar usuário atualizado', 500);
+            }
+        } else {
+            responderErro('Erro ao atualizar usuário: ' . $stmt->error, 500);
         }
 
-        $query .= " WHERE id = ?";
-        $params[] = $id;
-
-        $stmt = $pdo->prepare($query);
-        $stmt->execute($params);
-
-        // Remover a senha do retorno por segurança
-        if (isset($input['senha'])) {
-            unset($input['senha']);
-        }
-
-        echo json_encode([
-            'success' => true,
-            'message' => 'Usuário atualizado com sucesso',
-            'data' => $input
-        ]);
-
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao atualizar usuário: ' . $e->getMessage()
-        ]);
+    } catch (Exception $e) {
+        responderErro('Erro interno ao atualizar: ' . $e->getMessage(), 500);
     }
 }
 
-// Função para excluir um usuário (soft delete)
-function deleteUsuario($pdo, $id) {
+/**
+ * Remover usuário (soft delete)
+ */
+function handleDelete($conn, $empresa_id, $id) {
     try {
-        // Verificar se o usuário existe
-        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE id = ? AND removido_em IS NULL");
-        $stmt->execute([$id]);
-        if (!$stmt->fetch()) {
-            http_response_code(404);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Usuário não encontrado'
-            ]);
-            return;
-        }
-        
-        // Verificar se o usuário está sendo usado em algum atendimento ou andamento
-        $stmt_atendimento = $pdo->prepare("SELECT COUNT(*) as count FROM atendimentos WHERE atendente_id = ? AND removido_em IS NULL");
-        $stmt_atendimento->execute([$id]);
-        $result_atendimento = $stmt_atendimento->fetch(PDO::FETCH_ASSOC);
+        if (!$id) responderErro('ID não fornecido', 400);
 
-        $stmt_andamento = $pdo->prepare("SELECT COUNT(*) as count FROM andamentos WHERE usuario_id = ? AND removido_em IS NULL");
-        $stmt_andamento->execute([$id]);
-        $result_andamento = $stmt_andamento->fetch(PDO::FETCH_ASSOC);
-        
-        if ($result_atendimento['count'] > 0 || $result_andamento['count'] > 0) {
-            http_response_code(409);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Não é possível excluir este usuário pois ele está sendo usado em atendimentos ou andamentos'
-            ]);
-            return;
+        $stmt = $conn->prepare("SELECT id FROM usuarios WHERE id = ? AND removido_em IS NULL");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        if ($stmt->get_result()->num_rows === 0) {
+            responderErro('Usuário não encontrado', 404);
         }
-        
-        // Realizar soft delete
-        $stmt = $pdo->prepare("UPDATE usuarios SET removido_em = NOW() WHERE id = ?");
-        $stmt->execute([$id]);
-        
-        echo json_encode([
-            'success' => true,
-            'message' => 'Usuário excluído com sucesso'
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => 'Erro ao excluir usuário: ' . $e->getMessage()
-        ]);
+
+        $stmt = $conn->prepare("UPDATE usuarios SET removido_em = NOW() WHERE id = ?");
+        $stmt->bind_param("i", $id);
+        if ($stmt->execute()) {
+            responderSucesso('Usuário removido com sucesso');
+        } else {
+            responderErro('Erro ao remover usuário: ' . $stmt->error, 500);
+        }
+
+    } catch (Exception $e) {
+        responderErro('Erro interno ao remover: ' . $e->getMessage(), 500);
     }
 }
-?>
 
+/**
+ * Função auxiliar para salvar foto
+ */
+function salvarFoto($file) {
+    if (!$file || empty($file['name'])) return null;
+
+    $uploadDir = __DIR__ . '/uploads/';
+    if (!file_exists($uploadDir)) {
+        mkdir($uploadDir, 0777, true);
+    }
+
+    $fileName   = time() . '_' . basename($file['name']);
+    $targetFile = $uploadDir . $fileName;
+
+    if (move_uploaded_file($file['tmp_name'], $targetFile)) {
+        return 'uploads/' . $fileName;
+    }
+
+    return null;
+}

@@ -1,243 +1,281 @@
 <?php
-// Configuração de headers CORS
-header('Access-Control-Allow-Origin: *');
-header('Content-Type: application/json; charset=utf-8');
+/**
+ * API de Dashboard
+ * Sistema de Gerenciamento de Atendimentos
+ */
 
-// Configuração de erro para debug
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Definir modo de desenvolvimento
+define('DEVELOPMENT_MODE', true);
 
-// Função para formatar segundos em horas e minutos
-function formatSecondsToTime($seconds) {
-    if ($seconds === null || $seconds < 0) {
-        return 'N/A';
-    }
-    $hours = floor($seconds / 3600);
-    $minutes = floor(($seconds % 3600) / 60);
-    return sprintf('%dh %02dm', $hours, $minutes);
-}
+// Incluir configurações
+require_once 'config/cors.php';
+require_once 'config/db.php';
 
 try {
-    // Incluir arquivo de configuração do banco
-    require_once '../config/db.php';
-    
-    // Obter o período de filtro da requisição
-    $period = $_GET['period'] ?? '7-dias';
-    $end_date = new DateTime();
-    $start_date = new DateTime();
-
-    switch ($period) {
-        case 'hoje':
-            $start_date->setTime(0, 0, 0);
-            break;
-        case '7-dias':
-            $start_date->modify('-7 days')->setTime(0, 0, 0);
-            break;
-        case '30-dias':
-            $start_date->modify('-30 days')->setTime(0, 0, 0);
-            break;
-        case 'mes':
-            $start_date->modify('first day of this month')->setTime(0, 0, 0);
-            break;
-        case 'ano':
-            $start_date->modify('first day of January this year')->setTime(0, 0, 0);
-            break;
+    // Obter e validar empresa_id
+    $empresa_id = obterEmpresaId();
+    if (!$empresa_id) {
+        responderErro('ID da empresa não fornecido no cabeçalho X-Empresa-ID', 400);
     }
 
-    $start_date_str = $start_date->format('Y-m-d H:i:s');
-    $end_date_str = $end_date->format('Y-m-d H:i:s');
+} catch (Exception $e) {
+    error_log("Erro na inicialização da API de dashboard: " . $e->getMessage());
+    responderErro('Erro interno do servidor', 500);
+}
 
-    // 1. Consulta para KPIs
-    // Chamados Abertos Hoje
-    $stmt = $pdo->query("SELECT COUNT(*) FROM atendimentos WHERE DATE(data_abertura) = CURDATE() AND removido_em IS NULL");
-    $chamadosAbertosHoje = $stmt->fetchColumn();
+// Roteamento das requisições
+$method = $_SERVER['REQUEST_METHOD'];
 
-    // Tempo Médio de Resolução (apenas chamados resolvidos)
-    $stmt = $pdo->query("
-        SELECT AVG(TIMESTAMPDIFF(SECOND, data_abertura, data_fechamento)) 
+if ($method !== 'GET') {
+    responderErro('Apenas método GET é permitido para o dashboard', 405);
+}
+
+// Obter dados do dashboard
+getDashboardData($pdo, $empresa_id);
+
+/**
+ * Obter dados consolidados do dashboard
+ */
+function getDashboardData($pdo, $empresa_id) {
+    try {
+        $dashboard_data = [];
+        
+        // 1. Estatísticas gerais
+        $dashboard_data['estatisticas'] = getEstatisticasGerais($pdo, $empresa_id);
+        
+        // 2. Atendimentos por status
+        $dashboard_data['atendimentos_por_status'] = getAtendimentosPorStatus($pdo, $empresa_id);
+        
+        // 3. Atendimentos por prioridade
+        $dashboard_data['atendimentos_por_prioridade'] = getAtendimentosPorPrioridade($pdo, $empresa_id);
+        
+        // 4. Atendimentos recentes
+        $dashboard_data['atendimentos_recentes'] = getAtendimentosRecentes($pdo, $empresa_id);
+        
+        // 5. Clientes com mais atendimentos
+        $dashboard_data['top_clientes'] = getTopClientes($pdo, $empresa_id);
+        
+        // 6. Assuntos mais frequentes
+        $dashboard_data['top_assuntos'] = getTopAssuntos($pdo, $empresa_id);
+        
+        // 7. Performance dos usuários
+        $dashboard_data['performance_usuarios'] = getPerformanceUsuarios($pdo, $empresa_id);
+        
+        // 8. Atendimentos por período (últimos 30 dias)
+        $dashboard_data['atendimentos_por_periodo'] = getAtendimentosPorPeriodo($pdo, $empresa_id);
+        
+        responderSucesso('Dados do dashboard obtidos com sucesso', $dashboard_data);
+        
+    } catch (PDOException $e) {
+        error_log("Erro ao obter dados do dashboard: " . $e->getMessage());
+        responderErro('Erro ao obter dados do dashboard', 500);
+    }
+}
+/**
+ * Obter estatísticas gerais
+ */
+function getEstatisticasGerais($pdo, $empresa_id) {
+    $stats = [];
+    
+    // Total de clientes ativos
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as total 
+        FROM clientes 
+        WHERE empresa_id = ? AND ativo = 1 AND removido_em IS NULL
+    ");
+    $stmt->execute([$empresa_id]);
+    $stats['total_clientes'] = $stmt->fetch()['total'];
+    
+    // Total de equipamentos ativos
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as total 
+        FROM equipamentos 
+        WHERE empresa_id = ? AND ativo = 1 AND removido_em IS NULL
+    ");
+    $stmt->execute([$empresa_id]);
+    $stats['total_equipamentos'] = $stmt->fetch()['total'];
+    
+    // Total de atendimentos
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as total 
         FROM atendimentos 
-        WHERE status = 'Resolvido' 
+        WHERE empresa_id = ? AND removido_em IS NULL
+    ");
+    $stmt->execute([$empresa_id]);
+    $stats['total_atendimentos'] = $stmt->fetch()['total'];
+    
+    // Atendimentos em aberto
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as total 
+        FROM atendimentos 
+        WHERE empresa_id = ? AND status IN ('aberto', 'em_andamento', 'aguardando_cliente') AND removido_em IS NULL
+    ");
+    $stmt->execute([$empresa_id]);
+    $stats['atendimentos_abertos'] = $stmt->fetch()['total'];
+    
+    // Atendimentos concluídos este mês
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) as total 
+        FROM atendimentos 
+        WHERE empresa_id = ? AND status = 'concluido' 
+        AND MONTH(criado_em) = MONTH(CURRENT_DATE()) 
+        AND YEAR(criado_em) = YEAR(CURRENT_DATE())
         AND removido_em IS NULL
     ");
-    $tempoMedioResolucaoSegundos = $stmt->fetchColumn();
-    $tempoMedioResolucao = formatSecondsToTime($tempoMedioResolucaoSegundos);
-
-    // Chamados Pendentes (status diferente de Resolvido)
-    $stmt = $pdo->query("SELECT COUNT(*) FROM atendimentos WHERE status != 'Resolvido' AND removido_em IS NULL");
-    $chamadosPendentes = $stmt->fetchColumn();
-
-    // Chamados Resolvidos Hoje
-    $stmt = $pdo->query("SELECT COUNT(*) FROM atendimentos WHERE status = 'Resolvido' AND DATE(data_fechamento) = CURDATE() AND removido_em IS NULL");
-    $chamadosResolvidosHoje = $stmt->fetchColumn();
-
-    // SLA Cumprido
-    $stmt = $pdo->query("
-        SELECT 
-            SUM(CASE WHEN data_fechamento <= data_limite_sla THEN 1 ELSE 0 END) AS sla_cumprido,
-            COUNT(*) AS total_resolvidos
+    $stmt->execute([$empresa_id]);
+    $stats['atendimentos_mes'] = $stmt->fetch()['total'];
+    
+    // Receita total dos atendimentos concluídos este mês
+    $stmt = $pdo->prepare("
+        SELECT COALESCE(SUM(valor_servico), 0) as total 
         FROM atendimentos 
-        WHERE status = 'Resolvido' AND removido_em IS NULL
-    ");
-    $slaData = $stmt->fetch(PDO::FETCH_ASSOC);
-    $slaCumprido = ($slaData['total_resolvidos'] > 0) ? round(($slaData['sla_cumprido'] / $slaData['total_resolvidos']) * 100, 1) : 0;
-
-    // Chamados Críticos Abertos (prioridade alta ou urgente, e status diferente de resolvido)
-    $stmt = $pdo->query("
-        SELECT COUNT(*) 
-        FROM atendimentos 
-        WHERE prioridade IN ('Alta', 'Urgente') 
-        AND status != 'Resolvido' 
+        WHERE empresa_id = ? AND status = 'concluido' 
+        AND MONTH(criado_em) = MONTH(CURRENT_DATE()) 
+        AND YEAR(criado_em) = YEAR(CURRENT_DATE())
         AND removido_em IS NULL
     ");
-    $chamadosCriticosAbertos = $stmt->fetchColumn();
+    $stmt->execute([$empresa_id]);
+    $stats['receita_mes'] = $stmt->fetch()['total'];
+    
+    return $stats;
+}
 
-
-    // 2. Consultas para Gráficos
-    // Chamados por Período
-    $query = "
-        SELECT 
-            DATE(data_abertura) AS dia, 
-            COUNT(*) AS total_abertos,
-            SUM(CASE WHEN status = 'Resolvido' THEN 1 ELSE 0 END) AS total_fechados
+/**
+ * Obter atendimentos por status
+ */
+function getAtendimentosPorStatus($pdo, $empresa_id) {
+    $stmt = $pdo->prepare("
+        SELECT status, COUNT(*) as quantidade
         FROM atendimentos 
-        WHERE data_abertura BETWEEN ? AND ?
-        AND removido_em IS NULL
-        GROUP BY dia
-        ORDER BY dia
-    ";
-    $stmt = $pdo->prepare($query);
-    $stmt->execute([$start_date_str, $end_date_str]);
-    $chamadosPorPeriodoData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $chamadosPorPeriodo = [
-        'labels' => array_column($chamadosPorPeriodoData, 'dia'),
-        'abertos' => array_column($chamadosPorPeriodoData, 'total_abertos'),
-        'fechados' => array_column($chamadosPorPeriodoData, 'total_fechados'),
-    ];
-
-    // Distribuição por Status
-    $stmt = $pdo->query("
-        SELECT status, COUNT(*) AS count 
-        FROM atendimentos 
-        WHERE removido_em IS NULL
+        WHERE empresa_id = ? AND removido_em IS NULL
         GROUP BY status
+        ORDER BY quantidade DESC
     ");
-    $distribuicaoPorStatusData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->execute([$empresa_id]);
+    return $stmt->fetchAll();
+}
 
-    $distribuicaoPorStatus = [
-        'labels' => array_column($distribuicaoPorStatusData, 'status'),
-        'values' => array_column($distribuicaoPorStatusData, 'count'),
-    ];
-
-    // Chamados por Atendente
-    $stmt = $pdo->query("
-        SELECT u.nome, COUNT(a.id) AS count 
-        FROM atendimentos a
-        JOIN usuarios u ON a.responsavel_id = u.id
-        WHERE a.removido_em IS NULL
-        GROUP BY u.nome
-        ORDER BY count DESC
-        LIMIT 5
+/**
+ * Obter atendimentos por prioridade
+ */
+function getAtendimentosPorPrioridade($pdo, $empresa_id) {
+    $stmt = $pdo->prepare("
+        SELECT prioridade, COUNT(*) as quantidade
+        FROM atendimentos 
+        WHERE empresa_id = ? AND removido_em IS NULL
+        GROUP BY prioridade
+        ORDER BY 
+            CASE prioridade 
+                WHEN 'urgente' THEN 1 
+                WHEN 'alta' THEN 2 
+                WHEN 'media' THEN 3 
+                WHEN 'baixa' THEN 4 
+            END
     ");
-    $chamadosPorAtendenteData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->execute([$empresa_id]);
+    return $stmt->fetchAll();
+}
 
-    $chamadosPorAtendente = [
-        'labels' => array_column($chamadosPorAtendenteData, 'nome'),
-        'values' => array_column($chamadosPorAtendenteData, 'count'),
-    ];
-    
-    // Tempo Médio por Assunto
-    $stmt = $pdo->query("
-        SELECT a.nome, AVG(TIMESTAMPDIFF(MINUTE, t.data_abertura, t.data_fechamento)) AS tempo_medio_minutos
-        FROM atendimentos t
-        JOIN assuntos a ON t.assunto_id = a.id
-        WHERE t.status = 'Resolvido'
-        AND t.removido_em IS NULL
-        GROUP BY a.nome
-        ORDER BY tempo_medio_minutos DESC
-    ");
-    $tempoMedioPorAssuntoData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $tempoMedioPorAssunto = [
-        'labels' => array_column($tempoMedioPorAssuntoData, 'nome'),
-        'values' => array_column($tempoMedioPorAssuntoData, 'tempo_medio_minutos'),
-    ];
-
-    // Chamados por Cliente
-    $stmt = $pdo->query("
-        SELECT c.nome, COUNT(a.id) AS count 
-        FROM atendimentos a
-        JOIN clientes c ON a.cliente_id = c.id
-        WHERE a.removido_em IS NULL
-        GROUP BY c.nome
-        ORDER BY count DESC
-        LIMIT 5
-    ");
-    $chamadosPorClienteData = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $chamadosPorCliente = [
-        'labels' => array_column($chamadosPorClienteData, 'nome'),
-        'values' => array_column($chamadosPorClienteData, 'count'),
-    ];
-
-    // 3. Tabela de Chamados Recentes e Críticos
-    $stmt = $pdo->query("
+/**
+ * Obter atendimentos recentes
+ */
+function getAtendimentosRecentes($pdo, $empresa_id) {
+    $stmt = $pdo->prepare("
         SELECT 
-            t.id, 
-            c.nome as cliente_nome, 
-            t.status, 
-            t.prioridade, 
-            TIMESTAMPDIFF(SECOND, t.data_abertura, NOW()) AS tempoEmAberto,
-            u.nome AS responsavel
-        FROM atendimentos t
-        JOIN clientes c ON t.cliente_id = c.id
-        LEFT JOIN usuarios u ON t.responsavel_id = u.id
-        WHERE t.removido_em IS NULL
-        ORDER BY t.prioridade DESC, t.data_abertura DESC
+            a.id, a.descricao, a.status, a.prioridade, a.criado_em,
+            c.nome as cliente_nome,
+            u.nome as usuario_nome
+        FROM atendimentos a
+        LEFT JOIN clientes c ON a.cliente_id = c.id
+        LEFT JOIN usuarios u ON a.usuario_id = u.id
+        WHERE a.empresa_id = ? AND a.removido_em IS NULL
+        ORDER BY a.criado_em DESC
         LIMIT 10
     ");
-    $recentCallsData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->execute([$empresa_id]);
+    return $stmt->fetchAll();
+}
 
-    $recentCalls = array_map(function($call) {
-        $call['tempoEmAberto'] = formatSecondsToTime($call['tempoEmAberto']);
-        return $call;
-    }, $recentCallsData);
+/**
+ * Obter top clientes com mais atendimentos
+ */
+function getTopClientes($pdo, $empresa_id) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            c.nome,
+            COUNT(a.id) as total_atendimentos,
+            COALESCE(SUM(a.valor_servico), 0) as valor_total
+        FROM clientes c
+        LEFT JOIN atendimentos a ON c.id = a.cliente_id AND a.removido_em IS NULL
+        WHERE c.empresa_id = ? AND c.removido_em IS NULL
+        GROUP BY c.id, c.nome
+        HAVING total_atendimentos > 0
+        ORDER BY total_atendimentos DESC
+        LIMIT 10
+    ");
+    $stmt->execute([$empresa_id]);
+    return $stmt->fetchAll();
+}
 
+/**
+ * Obter assuntos mais frequentes
+ */
+function getTopAssuntos($pdo, $empresa_id) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            ass.nome,
+            COUNT(a.id) as total_atendimentos
+        FROM assuntos ass
+        LEFT JOIN atendimentos a ON ass.id = a.assunto_id AND a.removido_em IS NULL
+        WHERE ass.empresa_id = ? AND ass.removido_em IS NULL
+        GROUP BY ass.id, ass.nome
+        HAVING total_atendimentos > 0
+        ORDER BY total_atendimentos DESC
+        LIMIT 10
+    ");
+    $stmt->execute([$empresa_id]);
+    return $stmt->fetchAll();
+}
 
-    // Combinação e Resposta Final
-    $response = [
-        'success' => true,
-        'kpis' => [
-            'chamadosAbertosHoje' => $chamadosAbertosHoje,
-            'tempoMedioResolucao' => $tempoMedioResolucao,
-            'chamadosPendentes' => $chamadosPendentes,
-            'chamadosResolvidosHoje' => $chamadosResolvidosHoje,
-            'slaCumprido' => $slaCumprido,
-            'chamadosCriticosAbertos' => $chamadosCriticosAbertos,
-        ],
-        'charts' => [
-            'chamadosPorPeriodo' => $chamadosPorPeriodo,
-            'distribuicaoPorStatus' => $distribuicaoPorStatus,
-            'chamadosPorAtendente' => $chamadosPorAtendente,
-            'tempoMedioPorAssunto' => $tempoMedioPorAssunto,
-            'chamadosPorCliente' => $chamadosPorCliente,
-        ],
-        'recentCalls' => $recentCalls
-    ];
+/**
+ * Obter performance dos usuários
+ */
+function getPerformanceUsuarios($pdo, $empresa_id) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            u.nome,
+            COUNT(a.id) as total_atendimentos,
+            COUNT(CASE WHEN a.status = 'concluido' THEN 1 END) as atendimentos_concluidos,
+            COALESCE(AVG(a.tempo_real), 0) as tempo_medio,
+            COALESCE(SUM(a.valor_servico), 0) as valor_total
+        FROM usuarios u
+        LEFT JOIN atendimentos a ON u.id = a.usuario_id AND a.removido_em IS NULL
+        WHERE u.empresa_id = ? AND u.removido_em IS NULL AND u.ativo = 1
+        GROUP BY u.id, u.nome
+        ORDER BY total_atendimentos DESC
+    ");
+    $stmt->execute([$empresa_id]);
+    return $stmt->fetchAll();
+}
 
-    echo json_encode($response, JSON_PRETTY_PRINT);
-
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Erro de conexão com o banco de dados: ' . $e->getMessage()
-    ]);
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Erro interno: ' . $e->getMessage()
-    ]);
+/**
+ * Obter atendimentos por período (últimos 30 dias)
+ */
+function getAtendimentosPorPeriodo($pdo, $empresa_id) {
+    $stmt = $pdo->prepare("
+        SELECT 
+            DATE(criado_em) as data,
+            COUNT(*) as total_atendimentos,
+            COUNT(CASE WHEN status = 'concluido' THEN 1 END) as atendimentos_concluidos
+        FROM atendimentos 
+        WHERE empresa_id = ? 
+        AND criado_em >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+        AND removido_em IS NULL
+        GROUP BY DATE(criado_em)
+        ORDER BY data DESC
+    ");
+    $stmt->execute([$empresa_id]);
+    return $stmt->fetchAll();
 }
 ?>
+
