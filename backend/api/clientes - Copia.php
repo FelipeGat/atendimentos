@@ -4,19 +4,6 @@
  * Sistema de Gerenciamento de Atendimentos
  */
 
-// Headers CORS mais permissivos - DEVE ser a primeira coisa no arquivo
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Empresa-ID");
-header("Access-Control-Max-Age: 86400");
-header("Content-Type: application/json; charset=UTF-8");
-
-// Tratar requisições OPTIONS (preflight)
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit();
-}
-
 // Habilitar exibição de erros para debug
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
@@ -24,6 +11,19 @@ error_reporting(E_ALL);
 
 // Definir modo de desenvolvimento
 define('DEVELOPMENT_MODE', true);
+
+// Definir cabeçalhos CORS
+header("Content-Type: application/json; charset=UTF-8");
+header("Access-Control-Allow-Origin: http://localhost:3000");
+header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With");
+header("Access-Control-Allow-Credentials: true");
+
+// Tratar requisição OPTIONS (pré-flight CORS)
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
 
 // Incluir configurações
 require_once __DIR__ . "/../config/db.php";
@@ -446,21 +446,17 @@ function handleDelete($conn, $empresa_id, $id) {
  * Validar CPF ou CNPJ
  */
 function validarDocumento($documento) {
-    $documento = preg_replace('/\D/', '', $documento);
-    
     if (strlen($documento) == 11) {
         return validarCPF($documento);
     } elseif (strlen($documento) == 14) {
         return validarCNPJ($documento);
     }
-    
     return false;
 }
 
-/**
- * Validar CPF
- */
 function validarCPF($cpf) {
+    $cpf = preg_replace('/[^0-9]/', '', (string) $cpf);
+
     if (strlen($cpf) != 11 || preg_match('/(\d)\1{10}/', $cpf)) {
         return false;
     }
@@ -478,11 +474,14 @@ function validarCPF($cpf) {
     return true;
 }
 
-/**
- * Validar CNPJ
- */
 function validarCNPJ($cnpj) {
+    $cnpj = preg_replace('/[^0-9]/', '', (string) $cnpj);
+
     if (strlen($cnpj) != 14) {
+        return false;
+    }
+
+    if (preg_match('/(\d)\1{13}/', $cnpj)) {
         return false;
     }
 
@@ -525,6 +524,28 @@ function validarCNPJ($cnpj) {
 }
 
 /**
+ * Responder erro com código HTTP e mensagem JSON
+ */
+function responderErro($mensagem, $codigo = 400) {
+    http_response_code($codigo);
+    echo json_encode(['success' => false, 'message' => $mensagem]);
+    exit;
+}
+
+/**
+ * Responder sucesso com código HTTP e dados JSON
+ */
+function responderSucesso($mensagem, $dados = null, $codigo = 200) {
+    http_response_code($codigo);
+    $response = ['success' => true, 'message' => $mensagem];
+    if (!is_null($dados)) {
+        $response['data'] = $dados;
+    }
+    echo json_encode($response);
+    exit;
+}
+
+/**
  * Função para obter empresa_id do cabeçalho HTTP
  */
 function obterEmpresaId() {
@@ -544,5 +565,3 @@ function obterEmpresaId() {
 
     return $empresa_id;
 }
-?>
-

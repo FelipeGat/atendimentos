@@ -1,6 +1,5 @@
 <?php
 class Orcamento{
-
     private $conn;
     private $table_name = "orcamentos";
     private $table_items_name = "orcamentos_itens";
@@ -29,7 +28,6 @@ class Orcamento{
     public $criado_em;
     public $atualizado_em;
     public $removido_em;
-
     public $empresa_nome;
     public $cliente_nome;
 
@@ -38,22 +36,17 @@ class Orcamento{
     }
 
     function read($filterStatus = "", $filterStartDate = "", $filterEndDate = ""){
-        $query = "SELECT
-                    o.id, o.numero_orcamento, o.empresa_id, o.cliente_id, o.usuario_id, o.referencia, o.data_orcamento,
-                    o.validade_orcamento, o.prazo_inicio, o.prazo_duracao, o.observacoes, o.imposto_percentual,
-                    o.frete, o.desconto_valor, o.desconto_percentual, o.tipo_desconto, o.condicoes_pagamento,
-                    o.meios_pagamento, o.anotacoes_internas, o.valor_total, o.status, o.criado_em, o.atualizado_em, o.removido_em,
+        $query = "SELECT 
+                    o.id, o.numero_orcamento, o.empresa_id, o.cliente_id, o.usuario_id, o.referencia,
+                    o.data_orcamento, o.validade_orcamento, o.prazo_inicio, o.prazo_duracao, o.observacoes,
+                    o.imposto_percentual, o.frete, o.desconto_valor, o.desconto_percentual, o.tipo_desconto,
+                    o.condicoes_pagamento, o.meios_pagamento, o.anotacoes_internas, o.valor_total, o.status,
+                    o.criado_em, o.atualizado_em, o.removido_em,
                     e.nome as empresa_nome, c.nome as cliente_nome
-                FROM
-                    " . $this->table_name . " o
-                    LEFT JOIN
-                        empresas e
-                            ON o.empresa_id = e.id
-                    LEFT JOIN
-                        clientes c
-                            ON o.cliente_id = c.id
-                WHERE
-                    o.removido_em IS NULL ";
+                FROM " . $this->table_name . " o
+                LEFT JOIN empresas e ON o.empresa_id = e.id
+                LEFT JOIN clientes c ON o.cliente_id = c.id
+                WHERE o.removido_em IS NULL";
 
         if (!empty($filterStatus)) {
             $query .= " AND o.status = :status";
@@ -84,83 +77,54 @@ class Orcamento{
     }
 
     function readOne(){
-        $query = "SELECT
-                    o.id, o.numero_orcamento, o.empresa_id, o.cliente_id, o.usuario_id, o.referencia, o.data_orcamento,
-                    o.validade_orcamento, o.prazo_inicio, o.prazo_duracao, o.observacoes, o.imposto_percentual,
-                    o.frete, o.desconto_valor, o.desconto_percentual, o.tipo_desconto, o.condicoes_pagamento,
-                    o.meios_pagamento, o.anotacoes_internas, o.valor_total, o.status, o.criado_em, o.atualizado_em, o.removido_em,
+        $query = "SELECT 
+                    o.id, o.numero_orcamento, o.empresa_id, o.cliente_id, o.usuario_id, o.referencia,
+                    o.data_orcamento, o.validade_orcamento, o.prazo_inicio, o.prazo_duracao, o.observacoes,
+                    o.imposto_percentual, o.frete, o.desconto_valor, o.desconto_percentual, o.tipo_desconto,
+                    o.condicoes_pagamento, o.meios_pagamento, o.anotacoes_internas, o.valor_total, o.status,
+                    o.criado_em, o.atualizado_em, o.removido_em,
                     e.nome as empresa_nome, c.nome as cliente_nome
-                FROM
-                    " . $this->table_name . " o
-                    LEFT JOIN
-                        empresas e
-                            ON o.empresa_id = e.id
-                    LEFT JOIN
-                        clientes c
-                            ON o.cliente_id = c.id
-                WHERE
-                    o.id = ?
-                LIMIT
-                    0,1";
+                FROM " . $this->table_name . " o
+                LEFT JOIN empresas e ON o.empresa_id = e.id
+                LEFT JOIN clientes c ON o.cliente_id = c.id
+                WHERE o.id = ? AND o.removido_em IS NULL
+                LIMIT 0,1";
 
-        $stmt = $this->conn->prepare( $query );
+        $stmt = $this->conn->prepare($query);
         $stmt->bindParam(1, $this->id);
         $stmt->execute();
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($row) {
-            $this->numero_orcamento = $row["numero_orcamento"];
-            $this->empresa_id = $row["empresa_id"];
-            $this->cliente_id = $row["cliente_id"];
-            $this->usuario_id = $row["usuario_id"];
-            $this->referencia = $row["referencia"];
-            $this->data_orcamento = $row["data_orcamento"];
-            $this->validade_orcamento = $row["validade_orcamento"];
-            $this->prazo_inicio = $row["prazo_inicio"];
-            $this->prazo_duracao = $row["prazo_duracao"];
-            $this->observacoes = $row["observacoes"];
-            $this->imposto_percentual = $row["imposto_percentual"];
-            $this->frete = $row["frete"];
-            $this->desconto_valor = $row["desconto_valor"];
-            $this->desconto_percentual = $row["desconto_percentual"];
-            $this->tipo_desconto = $row["tipo_desconto"];
-            $this->condicoes_pagamento = $row["condicoes_pagamento"];
-            $this->meios_pagamento = $row["meios_pagamento"];
-            $this->anotacoes_internas = $row["anotacoes_internas"];
-            $this->valor_total = $row["valor_total"];
-            $this->status = $row["status"];
-            $this->criado_em = $row["criado_em"];
-            $this->atualizado_em = $row["atualizado_em"];
-            $this->removido_em = $row["removido_em"];
-            $this->empresa_nome = $row["empresa_nome"];
-            $this->cliente_nome = $row["cliente_nome"];
+            $this->numero_orcamento = $row['numero_orcamento'];
+            $this->empresa_id = $row['empresa_id'];
+            $this->cliente_id = $row['cliente_id'];
+            $this->usuario_id = $row['usuario_id'];
+            $this->referencia = $row['referencia'];
+            $this->data_orcamento = $row['data_orcamento'];
+            $this->validade_orcamento = $row['validade_orcamento'];
+            $this->prazo_inicio = $row['prazo_inicio'];
+            $this->prazo_duracao = $row['prazo_duracao'];
+            $this->observacoes = $row['observacoes'];
+            $this->imposto_percentual = $row['imposto_percentual'];
+            $this->frete = $row['frete'];
+            $this->desconto_valor = $row['desconto_valor'];
+            $this->desconto_percentual = $row['desconto_percentual'];
+            $this->tipo_desconto = $row['tipo_desconto'];
+            $this->condicoes_pagamento = $row['condicoes_pagamento'];
+            $this->meios_pagamento = $row['meios_pagamento'];
+            $this->anotacoes_internas = $row['anotacoes_internas'];
+            $this->valor_total = $row['valor_total'];
+            $this->status = $row['status'];
+            $this->criado_em = $row['criado_em'];
+            $this->atualizado_em = $row['atualizado_em'];
+            $this->removido_em = $row['removido_em'];
+            $this->empresa_nome = $row['empresa_nome'];
+            $this->cliente_nome = $row['cliente_nome'];
         }
     }
 
-   function readKpis(){
-    // A consulta original está correta
-    $query = "SELECT status, COUNT(*) as count FROM " . $this->table_name . " WHERE removido_em IS NULL GROUP BY status";
-    $stmt = $this->conn->prepare($query);
-    $stmt->execute();
-
-    $kpis = [];
-    $total = 0;
-
-    // Processa os resultados do banco
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        // Formata o nome do status para corresponder ao frontend (ex: 'Aguardando Aprovacao' -> 'aguardandoaprovacao')
-        $status_key = strtolower(str_replace(' ', '', $row['status']));
-        $kpis[$status_key] = (int)$row['count'];
-        $total += (int)$row['count'];
-    }
-    
-    // Adiciona o total ao array de KPIs
-    $kpis["total"] = $total;
-
-    // Retorna o array associativo diretamente
-    return $kpis;
-}
     function create(){
         $query = "INSERT INTO " . $this->table_name . "
                 SET
@@ -168,9 +132,10 @@ class Orcamento{
                     referencia=:referencia, data_orcamento=:data_orcamento, validade_orcamento=:validade_orcamento,
                     prazo_inicio=:prazo_inicio, prazo_duracao=:prazo_duracao, observacoes=:observacoes,
                     imposto_percentual=:imposto_percentual, frete=:frete, desconto_valor=:desconto_valor,
-                    desconto_percentual=:desconto_percentual, tipo_desconto=:tipo_desconto, condicoes_pagamento=:condicoes_pagamento,
-                    meios_pagamento=:meios_pagamento, anotacoes_internas=:anotacoes_internas, valor_total=:valor_total,
-                    status=:status, criado_em=:criado_em";
+                    desconto_percentual=:desconto_percentual, tipo_desconto=:tipo_desconto,
+                    condicoes_pagamento=:condicoes_pagamento, meios_pagamento=:meios_pagamento,
+                    anotacoes_internas=:anotacoes_internas, valor_total=:valor_total, status=:status,
+                    criado_em=:criado_em";
 
         $stmt = $this->conn->prepare($query);
 
@@ -223,6 +188,7 @@ class Orcamento{
             $this->id = $this->conn->lastInsertId();
             return true;
         }
+
         return false;
     }
 
@@ -233,11 +199,11 @@ class Orcamento{
                     referencia=:referencia, data_orcamento=:data_orcamento, validade_orcamento=:validade_orcamento,
                     prazo_inicio=:prazo_inicio, prazo_duracao=:prazo_duracao, observacoes=:observacoes,
                     imposto_percentual=:imposto_percentual, frete=:frete, desconto_valor=:desconto_valor,
-                    desconto_percentual=:desconto_percentual, tipo_desconto=:tipo_desconto, condicoes_pagamento=:condicoes_pagamento,
-                    meios_pagamento=:meios_pagamento, anotacoes_internas=:anotacoes_internas, valor_total=:valor_total,
-                    status=:status, atualizado_em=:atualizado_em
-                WHERE
-                    id = :id";
+                    desconto_percentual=:desconto_percentual, tipo_desconto=:tipo_desconto,
+                    condicoes_pagamento=:condicoes_pagamento, meios_pagamento=:meios_pagamento,
+                    anotacoes_internas=:anotacoes_internas, valor_total=:valor_total, status=:status,
+                    atualizado_em=:atualizado_em
+                WHERE id=:id";
 
         $stmt = $this->conn->prepare($query);
 
@@ -291,11 +257,12 @@ class Orcamento{
         if($stmt->execute()){
             return true;
         }
+
         return false;
     }
 
     function delete(){
-        $query = "UPDATE " . $this->table_name . " SET removido_em = :removido_em WHERE id = :id";
+        $query = "UPDATE " . $this->table_name . " SET removido_em=:removido_em WHERE id=:id";
 
         $stmt = $this->conn->prepare($query);
 
@@ -308,20 +275,17 @@ class Orcamento{
         if($stmt->execute()){
             return true;
         }
+
         return false;
     }
 
     function readItems(){
-        $query = "SELECT
-                    id, orcamento_id, tipo_item, descricao, tipo_especifico, observacao, quantidade, valor_unitario, valor_total, criado_em
-                FROM
-                    " . $this->table_items_name . "
-                WHERE
-                    orcamento_id = ?
-                ORDER BY
-                    criado_em ASC";
+        $query = "SELECT id, orcamento_id, tipo_item, descricao, tipo_especifico, observacao, quantidade, valor_unitario, valor_total, criado_em
+                FROM " . $this->table_items_name . "
+                WHERE orcamento_id = ? AND removido_em IS NULL
+                ORDER BY criado_em ASC";
 
-        $stmt = $this->conn->prepare( $query );
+        $stmt = $this->conn->prepare($query);
         $stmt->bindParam(1, $this->id);
         $stmt->execute();
 
@@ -345,6 +309,7 @@ class Orcamento{
         return $items_arr;
     }
 
+    // MÉTODO CORRIGIDO - Aceita tanto array quanto objeto
     function createItem($item){
         $query = "INSERT INTO " . $this->table_items_name . "
                 SET
@@ -354,16 +319,26 @@ class Orcamento{
 
         $stmt = $this->conn->prepare($query);
 
-        $item->orcamento_id=htmlspecialchars(strip_tags($item->orcamento_id));
-        $item->tipo_item=htmlspecialchars(strip_tags($item->tipo_item));
-        $item->descricao=htmlspecialchars(strip_tags($item->descricao));
-        $item->tipo_especifico=htmlspecialchars(strip_tags($item->tipo_especifico));
-        $item->observacao=htmlspecialchars(strip_tags($item->observacao));
-        $item->quantidade=htmlspecialchars(strip_tags($item->quantidade));
-        $item->valor_unitario=htmlspecialchars(strip_tags($item->valor_unitario));
-        $item->valor_total=htmlspecialchars(strip_tags($item->valor_total));
+        // Converter array para objeto se necessário
+        if (is_array($item)) {
+            $item = (object) $item;
+        }
 
-        $item->criado_em=date("Y-m-d H:i:s");
+        // Definir orcamento_id se não estiver definido
+        if (!isset($item->orcamento_id)) {
+            $item->orcamento_id = $this->id;
+        }
+
+        $item->orcamento_id = htmlspecialchars(strip_tags($item->orcamento_id));
+        $item->tipo_item = htmlspecialchars(strip_tags($item->tipo_item));
+        $item->descricao = htmlspecialchars(strip_tags($item->descricao));
+        $item->tipo_especifico = htmlspecialchars(strip_tags($item->tipo_especifico));
+        $item->observacao = htmlspecialchars(strip_tags($item->observacao ?? ''));
+        $item->quantidade = htmlspecialchars(strip_tags($item->quantidade));
+        $item->valor_unitario = htmlspecialchars(strip_tags($item->valor_unitario));
+        $item->valor_total = htmlspecialchars(strip_tags($item->valor_total));
+
+        $item->criado_em = date("Y-m-d H:i:s");
 
         $stmt->bindParam(":orcamento_id", $item->orcamento_id);
         $stmt->bindParam(":tipo_item", $item->tipo_item);
@@ -378,17 +353,25 @@ class Orcamento{
         if($stmt->execute()){
             return true;
         }
+
         return false;
     }
 
-    function deleteItemsByOrcamentoId($orcamento_id){
-        $query = "DELETE FROM " . $this->table_items_name . " WHERE orcamento_id = ?";
+    function readKpis(){
+        $query = "SELECT 
+                    COUNT(*) as total_orcamentos,
+                    SUM(CASE WHEN status = 'Aprovado' THEN 1 ELSE 0 END) as aprovados,
+                    SUM(CASE WHEN status = 'Pendente' THEN 1 ELSE 0 END) as pendentes,
+                    SUM(CASE WHEN status = 'Rejeitado' THEN 1 ELSE 0 END) as rejeitados,
+                    SUM(valor_total) as valor_total_geral,
+                    AVG(valor_total) as valor_medio
+                FROM " . $this->table_name . "
+                WHERE removido_em IS NULL";
+
         $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(1, $orcamento_id);
-        if($stmt->execute()){
-            return true;
-        }
-        return false;
+        $stmt->execute();
+
+        return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 }
 ?>

@@ -1,6 +1,7 @@
 <?php
 /**
  * Funções de resposta padronizadas
+ * Mantém compatibilidade total com código existente
  */
 if (!function_exists('responderSucesso')) {
     function responderSucesso($mensagem, $dados = [], $status = 200) {
