@@ -1,23 +1,27 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# Arquivos de dependências do Node (frontend)
+node_modules/
 
-# testing
-/coverage
+# Arquivos de dependências do PHP (backend)
+vendor/
 
-# production
-/build
-
-# misc
-.DS_Store
+# Arquivos de ambiente (NUNCA versionar!)
+.env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
 
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Arquivos compactados
+*.zip
+*.rar
+*.tar
+*.gz
+
+# Logs e arquivos de build
+/build
+/dist
+*.log
+
+# Arquivos de sistema operacional
+.DS_Store
+Thumbs.db
