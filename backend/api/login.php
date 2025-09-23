@@ -14,7 +14,26 @@ define('DEVELOPMENT_MODE', true);
 
 // Definir cabeçalhos CORS
 header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Origin: http://localhost:3000");
+
+// A URL de origem da sua requisição é obtida a partir do cabeçalho HTTP_ORIGIN
+$origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : null;
+
+// Lista de origens permitidas
+$allowed_origins = [
+    'http://localhost:3000', // Ambiente de desenvolvimento
+    'https://investsolucoesdigitais.com.br' // Ambiente de produção
+];
+
+if (in_array($origin, $allowed_origins)) {
+    header("Access-Control-Allow-Origin: " . $origin);
+} else {
+    // Para fins de desenvolvimento ou para evitar problemas, pode usar '*'
+    // header("Access-Control-Allow-Origin: *");
+    http_response_code(403);
+    echo json_encode(['error' => 'Origem não permitida']);
+    exit();
+}
+
 header("Access-Control-Allow-Methods: POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With");
 header("Access-Control-Allow-Credentials: true");
@@ -130,4 +149,3 @@ function handleLogin($conn) {
 function generateToken($userId) {
     return base64_encode($userId . ':' . time() . ':' . bin2hex(random_bytes(16)));
 }
-

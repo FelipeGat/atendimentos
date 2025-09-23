@@ -12,46 +12,58 @@ header("Access-Control-Max-Age: 86400");
 header("Content-Type: application/json; charset=UTF-8");
 
 // Tratar requisições OPTIONS (preflight)
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
     http_response_code(200);
     exit();
 }
 
 // Habilitar exibição de erros para debug
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
+ini_set("display_errors", 1);
+ini_set("display_startup_errors", 1);
 error_reporting(E_ALL);
 
 // Definir modo de desenvolvimento
-define('DEVELOPMENT_MODE', true);
+define("DEVELOPMENT_MODE", true);
 
 // Incluir configurações
 require_once __DIR__ . "/../config/db.php";
-require_once __DIR__ . "/../config/util.php";
 
 // Roteamento das requisições
-$method = $_SERVER['REQUEST_METHOD'];
-$id = $_GET['id'] ?? null;
+$method = $_SERVER["REQUEST_METHOD"];
 
 switch ($method) {
-    case 'GET':
+    case "GET":
+        $id = $_GET["id"] ?? null;
         handleGet($conn, $id);
         break;
 
-    case 'POST':
-        handlePost($conn);
+    case "POST":
+        // A requisição POST pode ser tanto JSON quanto FormData
+        $input = $_POST;
+        if (empty($input)) {
+            $input_json = file_get_contents("php://input");
+            $input = json_decode($input_json, true);
+        }
+        handlePost($conn, $input);
         break;
 
-    case 'PUT':
-        handlePut($conn);
+    case "PUT":
+        // A requisição PUT deve ser lida a partir do input bruto (sempre JSON)
+        $input_json = file_get_contents("php://input");
+        $input = json_decode($input_json, true);
+        if (!$input) {
+            responderErro("Dados de entrada inválidos ou não fornecidos", 400);
+        }
+        handlePut($conn, $input);
         break;
 
-    case 'DELETE':
+    case "DELETE":
+        $id = $_GET["id"] ?? null;
         handleDelete($conn, $id);
         break;
-
+    
     default:
-        responderErro('Método não permitido', 405);
+        responderErro("Método não permitido", 405);
         break;
 }
 
@@ -61,11 +73,30 @@ switch ($method) {
 function handleGet($conn, $id) {
     try {
         if ($id) {
-            // Buscar empresa específica
+            // Buscar empresa específica - APENAS CAMPOS QUE EXISTEM
             $stmt = $conn->prepare("
-                SELECT id, nome, cnpj, email, telefone, endereco, cidade, estado, cep, ativo, criado_em, atualizado_em
-                FROM empresas
-                WHERE id = ? AND removido_em IS NULL
+                SELECT 
+                    id, 
+                    cnpj, 
+                    razao_social, 
+                    nome_fantasia, 
+                    logradouro, 
+                    numero, 
+                    bairro, 
+                    cidade, 
+                    estado, 
+                    cep, 
+                    telefone, 
+                    email, 
+                    inscricao_municipal, 
+                    inscricao_estadual, 
+                    logomarca, 
+                    custo_operacional_dia,
+                    custo_operacional_semana, 
+                    custo_operacional_mes, 
+                    custo_operacional_ano, 
+                    ativo
+                FROM empresas WHERE id = ?
             ");
             if (!$stmt) {
                 responderErro("Erro na preparação da consulta: " . $conn->error, 500);
@@ -76,20 +107,40 @@ function handleGet($conn, $id) {
             $empresa = $result->fetch_assoc();
             
             if (!$empresa) {
-                responderErro('Empresa não encontrada', 404);
+                responderErro("Empresa não encontrada", 404);
             }
 
             // Garante que o status seja retornado como um número
-            $empresa['ativo'] = (int)$empresa['ativo'];
+            $empresa["ativo"] = (int)$empresa["ativo"];
             
-            responderSucesso('Empresa encontrada', $empresa);
+            responderSucesso("Empresa encontrada", $empresa);
             
         } else {
-            // Listar todas as empresas, com opção de filtrar por status
-            $filtro_status = isset($_GET['status']) && $_GET['status'] === 'ativo' ? " AND ativo = 1" : "";
+            // Listar todas as empresas - AGORA RETORNANDO OS CAMPOS CORRETOS
+            $filtro_status = isset($_GET["status"]) && $_GET["status"] === "ativo" ? " AND ativo = 1" : "";
 
             $stmt = $conn->prepare("
-                SELECT id, nome, cnpj, email, telefone, endereco, cidade, estado, cep, ativo, criado_em, atualizado_em
+                SELECT 
+                    id, 
+                    cnpj, 
+                    razao_social,
+                    nome_fantasia AS nome,
+                    logradouro, 
+                    numero, 
+                    bairro, 
+                    cidade, 
+                    estado, 
+                    cep, 
+                    telefone, 
+                    email, 
+                    inscricao_municipal, 
+                    inscricao_estadual, 
+                    logomarca, 
+                    custo_operacional_dia,
+                    custo_operacional_semana, 
+                    custo_operacional_mes, 
+                    custo_operacional_ano, 
+                    ativo
                 FROM empresas
                 WHERE removido_em IS NULL {$filtro_status}
                 ORDER BY id DESC
@@ -100,87 +151,108 @@ function handleGet($conn, $id) {
             $stmt->execute();
             $result = $stmt->get_result();
             $empresas = $result->fetch_all(MYSQLI_ASSOC);
-
-            // Ajustar o campo ativo para int
+            
             foreach ($empresas as &$empresa) {
-                $empresa['ativo'] = (int)$empresa['ativo'];
+                $empresa["ativo"] = (int)$empresa["ativo"];
             }
             
-            responderSucesso('Empresas listadas com sucesso', $empresas);
+            responderSucesso("Empresas listadas com sucesso", $empresas);
         }
         
     } catch (Exception $e) {
         error_log("Erro ao buscar empresas: " . $e->getMessage());
-        responderErro('Erro ao buscar empresas: ' . $e->getMessage(), 500);
+        responderErro("Erro ao buscar empresas: " . $e->getMessage(), 500);
     }
 }
 
 /**
  * Criar nova empresa
  */
-function handlePost($conn) {
+function handlePost($conn, $input) {
     try {
-        $input = json_decode(file_get_contents('php://input'), true);
-
-        // Validar dados obrigatórios
-        if (!$input || !isset($input['nome']) || empty(trim($input['nome']))) {
-            responderErro('Nome da empresa é obrigatório', 400);
+        if (!isset($input["razao_social"]) || empty(trim($input["razao_social"]))) {
+            responderErro("Razão Social é obrigatória", 400);
         }
 
-        $nome = trim($input['nome']);
-        $cnpj = isset($input['cnpj']) ? trim($input['cnpj']) : null;
-        $email = isset($input['email']) ? trim($input['email']) : null;
-        $telefone = isset($input['telefone']) ? trim($input['telefone']) : null;
-        $endereco = isset($input['endereco']) ? trim($input['endereco']) : null;
-        $cidade = isset($input['cidade']) ? trim($input['cidade']) : null;
-        $estado = isset($input['estado']) ? trim($input['estado']) : null;
-        $cep = isset($input['cep']) ? trim($input['cep']) : null;
-        $ativo = isset($input['ativo']) ? (int)$input['ativo'] : 1;
+        $razao_social = trim($input["razao_social"] ?? "");
+        $nome_fantasia = trim($input["nome_fantasia"] ?? "");
+        $cnpj = trim($input["cnpj"] ?? "");
+        $logradouro = trim($input["logradouro"] ?? "");
+        $numero = trim($input["numero"] ?? "");
+        $bairro = trim($input["bairro"] ?? "");
+        $cidade = trim($input["cidade"] ?? "");
+        $estado = trim($input["estado"] ?? "");
+        $cep = trim($input["cep"] ?? "");
+        $telefone = trim($input["telefone"] ?? "");
+        $email = trim($input["email"] ?? "");
+        $inscricao_municipal = trim($input["inscricao_municipal"] ?? "");
+        $inscricao_estadual = trim($input["inscricao_estadual"] ?? "");
+        $custo_operacional_dia = floatval($input["custo_operacional_dia"] ?? 0);
+        $custo_operacional_semana = floatval($input["custo_operacional_semana"] ?? 0);
+        $custo_operacional_mes = floatval($input["custo_operacional_mes"] ?? 0);
+        $custo_operacional_ano = floatval($input["custo_operacional_ano"] ?? 0);
+        $proximo_numero_orcamento = intval($input["proximo_numero_orcamento"] ?? 0);
+        $modelo_orcamento = trim($input["modelo_orcamento"] ?? "");
+        $ativo = intval($input["ativo"] ?? 1);
 
-        // Validar CNPJ se fornecido
         if ($cnpj) {
-            $cnpj_limpo = preg_replace('/\D/', '', $cnpj);
+            $cnpj_limpo = preg_replace("/\D/", "", $cnpj);
             if (!validarCNPJ($cnpj_limpo)) {
-                responderErro('CNPJ inválido', 400);
+                responderErro("CNPJ inválido", 400);
             }
-
-            // Verificar se CNPJ já existe
-            $stmt = $conn->prepare("
-                SELECT id FROM empresas 
-                WHERE cnpj = ? AND removido_em IS NULL
-            ");
-            if (!$stmt) {
-                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-            }
+            $stmt = $conn->prepare("SELECT id FROM empresas WHERE cnpj = ? AND removido_em IS NULL");
+            if (!$stmt) { responderErro("Erro na preparação da consulta: " . $conn->error, 500); }
             $stmt->bind_param("s", $cnpj_limpo);
             $stmt->execute();
             $result = $stmt->get_result();
-            if ($result->num_rows > 0) {
-                responderErro('CNPJ já cadastrado para outra empresa', 409);
-            }
-
+            if ($result->num_rows > 0) { responderErro("CNPJ já cadastrado para outra empresa", 409); }
             $cnpj = $cnpj_limpo;
         }
 
-        // Inserir nova empresa
+        $logomarca_path = null;
+        if (isset($_FILES["logomarca"]) && $_FILES["logomarca"]["error"] === UPLOAD_ERR_OK) {
+            $target_dir = __DIR__ . "/../uploads/logos/";
+            if (!is_dir($target_dir)) {
+                mkdir($target_dir, 0777, true);
+            }
+            $file_extension = pathinfo($_FILES["logomarca"]["name"], PATHINFO_EXTENSION);
+            $file_name = uniqid() . "." . $file_extension;
+            $target_file = $target_dir . $file_name;
+            if (move_uploaded_file($_FILES["logomarca"]["tmp_name"], $target_file)) {
+                $logomarca_path = $file_name;
+            } else {
+                error_log("Erro ao mover arquivo de logomarca.");
+            }
+        }
+
         $stmt = $conn->prepare("
-            INSERT INTO empresas (nome, cnpj, email, telefone, endereco, cidade, estado, cep, ativo) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO empresas (
+                razao_social, nome_fantasia, cnpj, logradouro, numero, bairro, cidade, estado, cep, 
+                telefone, email, inscricao_municipal, inscricao_estadual, logomarca, 
+                custo_operacional_dia, custo_operacional_semana, custo_operacional_mes, 
+                custo_operacional_ano, proximo_numero_orcamento, modelo_orcamento, ativo
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         if (!$stmt) {
             responderErro("Erro na preparação da consulta: " . $conn->error, 500);
         }
 
-        $stmt->bind_param("ssssssssi", 
-            $nome, $cnpj, $email, $telefone, $endereco, $cidade, $estado, $cep, $ativo
+        $stmt->bind_param("ssssssssssssssddddiis", 
+            $razao_social, $nome_fantasia, $cnpj, $logradouro, $numero, $bairro, $cidade, $estado, $cep, 
+            $telefone, $email, $inscricao_municipal, $inscricao_estadual, $logomarca_path, 
+            $custo_operacional_dia, $custo_operacional_semana, $custo_operacional_mes, 
+            $custo_operacional_ano, $proximo_numero_orcamento, $modelo_orcamento, $ativo
         );
 
         if ($stmt->execute()) {
             $lastId = $conn->insert_id;
-
-            // Buscar a empresa criada para retornar
             $stmt = $conn->prepare("
-                SELECT id, nome, cnpj, email, telefone, endereco, cidade, estado, cep, ativo, criado_em, atualizado_em
+                SELECT 
+                    id, razao_social, nome_fantasia, cnpj, logradouro, numero, bairro, cidade, estado, cep, 
+                    telefone, email, inscricao_municipal, inscricao_estadual, logomarca, 
+                    custo_operacional_dia, custo_operacional_semana, custo_operacional_mes, 
+                    custo_operacional_ano, proximo_numero_orcamento, modelo_orcamento, ativo, 
+                    criado_em, atualizado_em
                 FROM empresas 
                 WHERE id = ?
             ");
@@ -191,30 +263,27 @@ function handlePost($conn) {
             $stmt->execute();
             $result = $stmt->get_result();
             $empresa = $result->fetch_assoc();
-            $empresa['ativo'] = (int)$empresa['ativo'];
-
-            responderSucesso('Empresa criada com sucesso', $empresa, 201);
+            $empresa["ativo"] = (int)$empresa["ativo"];
+            responderSucesso("Empresa criada com sucesso", $empresa, 201);
         } else {
-            responderErro('Erro ao criar empresa: ' . $stmt->error, 500);
+            responderErro("Erro ao criar empresa: " . $stmt->error, 500);
         }
 
     } catch (Exception $e) {
         error_log("Erro ao criar empresa: " . $e->getMessage());
-        responderErro('Dados inválidos: ' . $e->getMessage(), 400);
+        responderErro("Dados inválidos: " . $e->getMessage(), 400);
     }
 }
 
 /**
  * Atualizar empresa
  */
-function handlePut($conn) {
+function handlePut($conn, $input) {
     try {
-        $input = json_decode(file_get_contents('php://input'), true);
-
-        if (!isset($input['id'])) {
-            responderErro('ID da empresa é obrigatório', 400);
+        if (!isset($input["id"])) {
+            responderErro("ID da empresa é obrigatório", 400);
         }
-        $id = $input['id'];
+        $id = $input["id"];
 
         // Verificar se a empresa existe
         $stmt = $conn->prepare("
@@ -229,29 +298,38 @@ function handlePut($conn) {
         $result = $stmt->get_result();
 
         if ($result->num_rows === 0) {
-            responderErro('Empresa não encontrada', 404);
+            responderErro("Empresa não encontrada", 404);
         }
 
         // Preparar campos para atualização
         $fields = [];
         $params = [];
-        $types = '';
+        $types = "";
 
-        $allowed_fields = ['nome', 'cnpj', 'email', 'telefone', 'endereco', 'cidade', 'estado', 'cep', 'ativo'];
+        $allowed_fields = [
+            "razao_social", "nome_fantasia", "cnpj", "email", "telefone",
+            "logradouro", "numero", "bairro", "cidade", "estado", "cep",
+            "inscricao_municipal", "inscricao_estadual", "logomarca",
+            "custo_operacional_dia", "custo_operacional_semana",
+            "custo_operacional_mes", "custo_operacional_ano", "proximo_numero_orcamento",
+            "modelo_orcamento", "ativo"
+        ];
 
         foreach ($input as $key => $value) {
+            // Ignorar o campo 'id' pois já é usado no WHERE
+            if ($key === "id") continue;
+
             if (in_array($key, $allowed_fields)) {
-                if (in_array($key, ['nome']) && empty(trim($value))) {
-                    responderErro('Nome não pode ser vazio', 400);
+                // Validação para Razão Social, se o campo for fornecido
+                if ($key === "razao_social" && empty(trim($value))) {
+                    responderErro("Razão Social não pode ser vazio", 400);
                 }
 
-                if ($key === 'cnpj' && $value !== null) {
-                    $cnpj_limpo = preg_replace('/\D/', '', $value);
+                if ($key === "cnpj" && $value !== null) {
+                    $cnpj_limpo = preg_replace("/\D/", "", $value);
                     if (!validarCNPJ($cnpj_limpo)) {
-                        responderErro('CNPJ inválido', 400);
+                        responderErro("CNPJ inválido", 400);
                     }
-                    $value = $cnpj_limpo;
-
                     // Verificar duplicidade de CNPJ para outra empresa
                     $stmtCheck = $conn->prepare("
                         SELECT id FROM empresas WHERE cnpj = ? AND id != ? AND removido_em IS NULL
@@ -259,37 +337,44 @@ function handlePut($conn) {
                     if (!$stmtCheck) {
                         responderErro("Erro na preparação da consulta: " . $conn->error, 500);
                     }
-                    $stmtCheck->bind_param("si", $value, $id);
+                    $stmtCheck->bind_param("si", $cnpj_limpo, $id);
                     $stmtCheck->execute();
                     $resCheck = $stmtCheck->get_result();
                     if ($resCheck->num_rows > 0) {
-                        responderErro('CNPJ já cadastrado para outra empresa', 409);
+                        responderErro("CNPJ já cadastrado para outra empresa", 409);
                     }
+                    $value = $cnpj_limpo;
                 }
 
-                if ($key === 'ativo') {
+                if ($key === "ativo" || strpos($key, "custo_operacional") !== false) {
+                    $types .= "d"; // double
+                    $value = (double)$value;
+                } else if ($key === "proximo_numero_orcamento") {
+                    $types .= "i"; // integer
                     $value = (int)$value;
+                } else {
+                    $types .= "s"; // string
                 }
-
+                
                 $fields[] = "$key = ?";
                 $params[] = $value;
-                $types .= 's';
             }
         }
 
         if (empty($fields)) {
-            responderErro('Nenhum campo válido para atualizar', 400);
+            // Se nenhum campo válido foi fornecido para atualização, retornar sucesso sem fazer UPDATE
+            responderSucesso("Nenhum campo válido para atualizar", [], 200);
         }
 
         // Construir SQL de update
-        $sql = "UPDATE empresas SET " . implode(', ', $fields) . ", atualizado_em = NOW() WHERE id = ?";
+        $sql = "UPDATE empresas SET " . implode(", ", $fields) . ", atualizado_em = NOW() WHERE id = ?";
         $stmt = $conn->prepare($sql);
         if (!$stmt) {
             responderErro("Erro na preparação da consulta: " . $conn->error, 500);
         }
 
         // Adicionar tipos e parâmetros do WHERE
-        $types .= 'i';
+        $types .= "i";
         $params[] = $id;
 
         // Preparar bind_param com call_user_func_array
@@ -297,17 +382,37 @@ function handlePut($conn) {
         for ($i=0; $i<count($params); $i++) {
             $bind_names[] = &$params[$i];
         }
-        call_user_func_array([$stmt, 'bind_param'], $bind_names);
+        call_user_func_array([$stmt, "bind_param"], $bind_names);
 
         if (!$stmt->execute()) {
-            responderErro('Erro ao atualizar empresa: ' . $stmt->error, 500);
+            responderErro("Erro ao atualizar empresa: " . $stmt->error, 500);
         }
 
-        responderSucesso('Empresa atualizada com sucesso');
+        // Retornar a empresa atualizada
+        $stmt = $conn->prepare("
+            SELECT 
+                id, razao_social, nome_fantasia, cnpj, logradouro, numero, bairro, cidade, estado, cep, 
+                telefone, email, inscricao_municipal, inscricao_estadual, logomarca, 
+                custo_operacional_dia, custo_operacional_semana, custo_operacional_mes, 
+                custo_operacional_ano, proximo_numero_orcamento, modelo_orcamento, ativo, 
+                criado_em, atualizado_em
+            FROM empresas 
+            WHERE id = ?
+        ");
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+        }
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $empresa = $result->fetch_assoc();
+        $empresa["ativo"] = (int)$empresa["ativo"];
+
+        responderSucesso("Empresa atualizada com sucesso", $empresa);
 
     } catch (Exception $e) {
         error_log("Erro ao atualizar empresa: " . $e->getMessage());
-        responderErro('Erro ao atualizar empresa: ' . $e->getMessage(), 500);
+        responderErro("Erro ao atualizar empresa: " . $e->getMessage(), 500);
     }
 }
 
@@ -317,7 +422,7 @@ function handlePut($conn) {
 function handleDelete($conn, $id) {
     try {
         if (!$id) {
-            responderErro('ID da empresa não fornecido na URL.', 400);
+            responderErro("ID da empresa não fornecido na URL.", 400);
         }
 
         // Verificar se empresa existe
@@ -333,7 +438,7 @@ function handleDelete($conn, $id) {
         $result = $stmt->get_result();
 
         if ($result->num_rows === 0) {
-            responderErro('Empresa não encontrada ou já removida', 404);
+            responderErro("Empresa não encontrada ou já removida", 404);
         }
 
         // Soft delete - marcar removido_em
@@ -345,61 +450,70 @@ function handleDelete($conn, $id) {
         }
         $stmt->bind_param("i", $id);
         if ($stmt->execute()) {
-            responderSucesso('Empresa removida com sucesso');
+            responderSucesso("Empresa removida com sucesso");
         } else {
-            responderErro('Erro ao remover empresa: ' . $stmt->error, 500);
+            responderErro("Erro ao remover empresa: " . $stmt->error, 500);
         }
 
     } catch (Exception $e) {
         error_log("Erro ao remover empresa: " . $e->getMessage());
-        responderErro('Erro ao remover empresa: ' . $e->getMessage(), 500);
+        responderErro("Erro ao remover empresa: " . $e->getMessage(), 500);
     }
+}
+
+/**
+ * Funções auxiliares para resposta da API
+ */
+function responderSucesso($message, $data = [], $status = 200) {
+    http_response_code($status);
+    echo json_encode(["success" => true, "message" => $message, "data" => $data]);
+    exit();
+}
+
+function responderErro($message, $status = 400) {
+    http_response_code($status);
+    echo json_encode(["success" => false, "message" => $message]);
+    exit();
 }
 
 /**
  * Validar CNPJ
  */
 function validarCNPJ($cnpj) {
+    // Remove caracteres não numéricos
+    $cnpj = preg_replace("/[^0-9]/", "", $cnpj);
+
+    // Verifica se o CNPJ tem 14 dígitos
     if (strlen($cnpj) != 14) {
         return false;
     }
 
-    $tamanho = strlen($cnpj) - 2;
-    $numeros = substr($cnpj, 0, $tamanho);
-    $digitos = substr($cnpj, $tamanho);
-    $soma = 0;
-    $pos = $tamanho - 7;
-
-    for ($i = $tamanho; $i >= 1; $i--) {
-        $soma += $numeros[$tamanho - $i] * $pos--;
-        if ($pos < 2) {
-            $pos = 9;
-        }
-    }
-
-    $resultado = ($soma % 11) < 2 ? 0 : 11 - ($soma % 11);
-    if ($resultado != $digitos[0]) {
+    // Verifica se todos os dígitos são iguais (ex: 11.111.111/1111-11)
+    if (preg_match("/(.)\1{13}/", $cnpj)) {
         return false;
     }
 
-    $tamanho += 1;
-    $numeros = substr($cnpj, 0, $tamanho);
-    $soma = 0;
-    $pos = $tamanho - 7;
-
-    for ($i = $tamanho; $i >= 1; $i--) {
-        $soma += $numeros[$tamanho - $i] * $pos--;
-        if ($pos < 2) {
-            $pos = 9;
+    // Validação dos dígitos verificadores
+    for ($i = 0; $i < 2; $i++) {
+        $soma = 0;
+        $pos = 5 + $i;
+        for ($j = 0; $j < 12 + $i; $j++) {
+            $soma += $cnpj[$j] * $pos;
+            $pos--;
+            if ($pos < 2) {
+                $pos = 9;
+            }
         }
-    }
-
-    $resultado = ($soma % 11) < 2 ? 0 : 11 - ($soma % 11);
-    if ($resultado != $digitos[1]) {
-        return false;
+        $digito = $soma % 11 < 2 ? 0 : 11 - ($soma % 11);
+        if ($cnpj[12 + $i] != $digito) {
+            return false;
+        }
     }
 
     return true;
 }
-?>
 
+// Fechar conexão com o banco de dados
+$conn->close();
+
+?>

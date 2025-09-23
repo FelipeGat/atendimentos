@@ -24,7 +24,7 @@ $atendimento_id = isset($_GET['atendimento_id']) ? (int)$_GET['atendimento_id'] 
 
 switch ($method) {
     case 'OPTIONS':
-        // Responde ao preflight request e sai
+        // Responde ao Preflight request e sai
         http_response_code(200);
         exit();
         break;

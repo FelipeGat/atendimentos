@@ -31,6 +31,9 @@ class Orcamento{
     public $empresa_nome;
     public $cliente_nome;
 
+    public $servicos = [];
+    public $materiais = [];
+
     public function __construct($db){
         $this->conn = $db;
     }
@@ -97,32 +100,43 @@ class Orcamento{
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($row) {
-            $this->numero_orcamento = $row['numero_orcamento'];
-            $this->empresa_id = $row['empresa_id'];
-            $this->cliente_id = $row['cliente_id'];
-            $this->usuario_id = $row['usuario_id'];
-            $this->referencia = $row['referencia'];
-            $this->data_orcamento = $row['data_orcamento'];
-            $this->validade_orcamento = $row['validade_orcamento'];
-            $this->prazo_inicio = $row['prazo_inicio'];
-            $this->prazo_duracao = $row['prazo_duracao'];
-            $this->observacoes = $row['observacoes'];
-            $this->imposto_percentual = $row['imposto_percentual'];
-            $this->frete = $row['frete'];
-            $this->desconto_valor = $row['desconto_valor'];
-            $this->desconto_percentual = $row['desconto_percentual'];
-            $this->tipo_desconto = $row['tipo_desconto'];
-            $this->condicoes_pagamento = $row['condicoes_pagamento'];
-            $this->meios_pagamento = $row['meios_pagamento'];
-            $this->anotacoes_internas = $row['anotacoes_internas'];
-            $this->valor_total = $row['valor_total'];
-            $this->status = $row['status'];
-            $this->criado_em = $row['criado_em'];
-            $this->atualizado_em = $row['atualizado_em'];
-            $this->removido_em = $row['removido_em'];
-            $this->empresa_nome = $row['empresa_nome'];
-            $this->cliente_nome = $row['cliente_nome'];
+            foreach ($row as $key => $value) {
+                if (property_exists($this, $key)) {
+                    $this->$key = $value;
+                }
+            }
+
+            // Buscar itens vinculados
+            $this->servicos = $this->readItemsByType('Servico');
+            $this->materiais = $this->readItemsByType('Material');
         }
+    }
+
+    function readItems(){
+        $query = "SELECT id, orcamento_id, tipo_item, descricao, tipo_especifico, observacao, quantidade, valor_unitario, valor_total, criado_em
+                FROM " . $this->table_items_name . "
+                WHERE orcamento_id = ? AND removido_em IS NULL
+                ORDER BY criado_em ASC";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(1, $this->id);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    function readItemsByType($tipo_item){
+        $query = "SELECT id, orcamento_id, tipo_item, descricao, tipo_especifico, observacao, quantidade, valor_unitario, valor_total, criado_em
+                FROM " . $this->table_items_name . "
+                WHERE orcamento_id = ? AND tipo_item = ? AND removido_em IS NULL
+                ORDER BY criado_em ASC";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->bindParam(1, $this->id);
+        $stmt->bindParam(2, $tipo_item);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     function create(){
@@ -138,27 +152,6 @@ class Orcamento{
                     criado_em=:criado_em";
 
         $stmt = $this->conn->prepare($query);
-
-        $this->numero_orcamento=htmlspecialchars(strip_tags($this->numero_orcamento));
-        $this->empresa_id=htmlspecialchars(strip_tags($this->empresa_id));
-        $this->cliente_id=htmlspecialchars(strip_tags($this->cliente_id));
-        $this->usuario_id=htmlspecialchars(strip_tags($this->usuario_id));
-        $this->referencia=htmlspecialchars(strip_tags($this->referencia));
-        $this->data_orcamento=htmlspecialchars(strip_tags($this->data_orcamento));
-        $this->validade_orcamento=htmlspecialchars(strip_tags($this->validade_orcamento));
-        $this->prazo_inicio=htmlspecialchars(strip_tags($this->prazo_inicio));
-        $this->prazo_duracao=htmlspecialchars(strip_tags($this->prazo_duracao));
-        $this->observacoes=htmlspecialchars(strip_tags($this->observacoes));
-        $this->imposto_percentual=htmlspecialchars(strip_tags($this->imposto_percentual));
-        $this->frete=htmlspecialchars(strip_tags($this->frete));
-        $this->desconto_valor=htmlspecialchars(strip_tags($this->desconto_valor));
-        $this->desconto_percentual=htmlspecialchars(strip_tags($this->desconto_percentual));
-        $this->tipo_desconto=htmlspecialchars(strip_tags($this->tipo_desconto));
-        $this->condicoes_pagamento=htmlspecialchars(strip_tags($this->condicoes_pagamento));
-        $this->meios_pagamento=htmlspecialchars(strip_tags($this->meios_pagamento));
-        $this->anotacoes_internas=htmlspecialchars(strip_tags($this->anotacoes_internas));
-        $this->valor_total=htmlspecialchars(strip_tags($this->valor_total));
-        $this->status=htmlspecialchars(strip_tags($this->status));
 
         $this->criado_em=date("Y-m-d H:i:s");
 
@@ -207,28 +200,6 @@ class Orcamento{
 
         $stmt = $this->conn->prepare($query);
 
-        $this->numero_orcamento=htmlspecialchars(strip_tags($this->numero_orcamento));
-        $this->empresa_id=htmlspecialchars(strip_tags($this->empresa_id));
-        $this->cliente_id=htmlspecialchars(strip_tags($this->cliente_id));
-        $this->usuario_id=htmlspecialchars(strip_tags($this->usuario_id));
-        $this->referencia=htmlspecialchars(strip_tags($this->referencia));
-        $this->data_orcamento=htmlspecialchars(strip_tags($this->data_orcamento));
-        $this->validade_orcamento=htmlspecialchars(strip_tags($this->validade_orcamento));
-        $this->prazo_inicio=htmlspecialchars(strip_tags($this->prazo_inicio));
-        $this->prazo_duracao=htmlspecialchars(strip_tags($this->prazo_duracao));
-        $this->observacoes=htmlspecialchars(strip_tags($this->observacoes));
-        $this->imposto_percentual=htmlspecialchars(strip_tags($this->imposto_percentual));
-        $this->frete=htmlspecialchars(strip_tags($this->frete));
-        $this->desconto_valor=htmlspecialchars(strip_tags($this->desconto_valor));
-        $this->desconto_percentual=htmlspecialchars(strip_tags($this->desconto_percentual));
-        $this->tipo_desconto=htmlspecialchars(strip_tags($this->tipo_desconto));
-        $this->condicoes_pagamento=htmlspecialchars(strip_tags($this->condicoes_pagamento));
-        $this->meios_pagamento=htmlspecialchars(strip_tags($this->meios_pagamento));
-        $this->anotacoes_internas=htmlspecialchars(strip_tags($this->anotacoes_internas));
-        $this->valor_total=htmlspecialchars(strip_tags($this->valor_total));
-        $this->status=htmlspecialchars(strip_tags($this->status));
-        $this->id=htmlspecialchars(strip_tags($this->id));
-
         $this->atualizado_em=date("Y-m-d H:i:s");
 
         $stmt->bindParam(":numero_orcamento", $this->numero_orcamento);
@@ -265,8 +236,6 @@ class Orcamento{
         $query = "UPDATE " . $this->table_name . " SET removido_em=:removido_em WHERE id=:id";
 
         $stmt = $this->conn->prepare($query);
-
-        $this->id=htmlspecialchars(strip_tags($this->id));
         $this->removido_em=date("Y-m-d H:i:s");
 
         $stmt->bindParam(":id", $this->id);
@@ -279,37 +248,6 @@ class Orcamento{
         return false;
     }
 
-    function readItems(){
-        $query = "SELECT id, orcamento_id, tipo_item, descricao, tipo_especifico, observacao, quantidade, valor_unitario, valor_total, criado_em
-                FROM " . $this->table_items_name . "
-                WHERE orcamento_id = ? AND removido_em IS NULL
-                ORDER BY criado_em ASC";
-
-        $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(1, $this->id);
-        $stmt->execute();
-
-        $items_arr = array();
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-            extract($row);
-            $item = array(
-                "id" => $id,
-                "orcamento_id" => $orcamento_id,
-                "tipo_item" => $tipo_item,
-                "descricao" => $descricao,
-                "tipo_especifico" => $tipo_especifico,
-                "observacao" => $observacao,
-                "quantidade" => $quantidade,
-                "valor_unitario" => $valor_unitario,
-                "valor_total" => $valor_total,
-                "criado_em" => $criado_em
-            );
-            array_push($items_arr, $item);
-        }
-        return $items_arr;
-    }
-
-    // MÉTODO CORRIGIDO - Aceita tanto array quanto objeto
     function createItem($item){
         $query = "INSERT INTO " . $this->table_items_name . "
                 SET
@@ -319,26 +257,23 @@ class Orcamento{
 
         $stmt = $this->conn->prepare($query);
 
-        // Converter array para objeto se necessário
         if (is_array($item)) {
             $item = (object) $item;
         }
 
-        // Definir orcamento_id se não estiver definido
         if (!isset($item->orcamento_id)) {
             $item->orcamento_id = $this->id;
         }
 
-        $item->orcamento_id = htmlspecialchars(strip_tags($item->orcamento_id));
-        $item->tipo_item = htmlspecialchars(strip_tags($item->tipo_item));
-        $item->descricao = htmlspecialchars(strip_tags($item->descricao));
-        $item->tipo_especifico = htmlspecialchars(strip_tags($item->tipo_especifico));
-        $item->observacao = htmlspecialchars(strip_tags($item->observacao ?? ''));
-        $item->quantidade = htmlspecialchars(strip_tags($item->quantidade));
-        $item->valor_unitario = htmlspecialchars(strip_tags($item->valor_unitario));
-        $item->valor_total = htmlspecialchars(strip_tags($item->valor_total));
-
-        $item->criado_em = date("Y-m-d H:i:s");
+        $item->orcamento_id   = htmlspecialchars(strip_tags($item->orcamento_id));
+        $item->tipo_item      = htmlspecialchars(strip_tags($item->tipo_item ?? ""));
+        $item->descricao      = htmlspecialchars(strip_tags($item->descricao ?? ""));
+        $item->tipo_especifico= htmlspecialchars(strip_tags($item->tipo_especifico ?? ""));
+        $item->observacao     = htmlspecialchars(strip_tags($item->observacao ?? ""));
+        $item->quantidade     = htmlspecialchars(strip_tags($item->quantidade ?? 0));
+        $item->valor_unitario = htmlspecialchars(strip_tags($item->valor_unitario ?? 0));
+        $item->valor_total    = htmlspecialchars(strip_tags($item->valor_total ?? 0));
+        $item->criado_em      = date("Y-m-d H:i:s");
 
         $stmt->bindParam(":orcamento_id", $item->orcamento_id);
         $stmt->bindParam(":tipo_item", $item->tipo_item);
@@ -350,29 +285,120 @@ class Orcamento{
         $stmt->bindParam(":valor_total", $item->valor_total);
         $stmt->bindParam(":criado_em", $item->criado_em);
 
-        if($stmt->execute()){
-            return true;
+        return $stmt->execute();
+    }
+
+    function updateItems($orcamento_id, $items, $tipo_item) {
+        // CORRIGIDO: Só deleta se houver novos itens para substituir
+        if (!empty($items)) {
+            $query_delete = "UPDATE " . $this->table_items_name . " SET removido_em = NOW() WHERE orcamento_id = ? AND tipo_item = ? AND removido_em IS NULL";
+            $stmt_delete = $this->conn->prepare($query_delete);
+            $stmt_delete->execute([$orcamento_id, $tipo_item]);
         }
 
-        return false;
+        foreach ($items as $item_data) {
+            $item_data["orcamento_id"] = $orcamento_id;
+            $item_data["tipo_item"] = $tipo_item;
+            $this->createItem($item_data);
+        }
     }
 
-    function readKpis(){
+    // Função para ler todos os orçamentos com paginação e filtros
+    function readAllWithPagination($empresa_id, $search = '', $status = '', $cliente_id = '', $start_date = '', $end_date = '', $offset = 0, $limit = 10) {
         $query = "SELECT 
-                    COUNT(*) as total_orcamentos,
-                    SUM(CASE WHEN status = 'Aprovado' THEN 1 ELSE 0 END) as aprovados,
-                    SUM(CASE WHEN status = 'Pendente' THEN 1 ELSE 0 END) as pendentes,
-                    SUM(CASE WHEN status = 'Rejeitado' THEN 1 ELSE 0 END) as rejeitados,
-                    SUM(valor_total) as valor_total_geral,
-                    AVG(valor_total) as valor_medio
-                FROM " . $this->table_name . "
-                WHERE removido_em IS NULL";
+                    o.id, o.numero_orcamento, o.empresa_id, o.cliente_id, o.usuario_id, o.referencia,
+                    o.data_orcamento, o.validade_orcamento, o.prazo_inicio, o.prazo_duracao, o.observacoes,
+                    o.imposto_percentual, o.frete, o.desconto_valor, o.desconto_percentual, o.tipo_desconto,
+                    o.condicoes_pagamento, o.meios_pagamento, o.anotacoes_internas, o.valor_total, o.status,
+                    o.criado_em, o.atualizado_em, o.removido_em,
+                    e.nome as empresa_nome, c.nome as cliente_nome
+                FROM " . $this->table_name . " o
+                LEFT JOIN empresas e ON o.empresa_id = e.id
+                LEFT JOIN clientes c ON o.cliente_id = c.id
+                WHERE o.empresa_id = :empresa_id AND o.removido_em IS NULL";
+
+        $params = [":empresa_id" => $empresa_id];
+
+        if (!empty($search)) {
+            $query .= " AND (o.numero_orcamento LIKE :search OR o.referencia LIKE :search OR c.nome LIKE :search)";
+            $params[":search"] = "%" . $search . "%";
+        }
+        if (!empty($status)) {
+            $query .= " AND o.status = :status";
+            $params[":status"] = $status;
+        }
+        if (!empty($cliente_id)) {
+            $query .= " AND o.cliente_id = :cliente_id";
+            $params[":cliente_id"] = $cliente_id;
+        }
+        if (!empty($start_date)) {
+            $query .= " AND o.data_orcamento >= :start_date";
+            $params[":start_date"] = $start_date;
+        }
+        if (!empty($end_date)) {
+            $query .= " AND o.data_orcamento <= :end_date";
+            $params[":end_date"] = $end_date;
+        }
+
+        $query .= " ORDER BY o.criado_em DESC LIMIT :offset, :limit";
 
         $stmt = $this->conn->prepare($query);
-        $stmt->execute();
 
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        foreach ($params as $key => &$val) {
+            $stmt->bindParam($key, $val);
+        }
+        $stmt->bindParam(":offset", $offset, PDO::PARAM_INT);
+        $stmt->bindParam(":limit", $limit, PDO::PARAM_INT);
+
+        $stmt->execute();
+        return $stmt;
     }
+
+    // Função para contar o total de orçamentos com filtros
+    function countAll(
+        $empresa_id, 
+        $search = "", 
+        $status = "", 
+        $cliente_id = "", 
+        $start_date = "", 
+        $end_date = ""
+    ) {
+        $query = "SELECT COUNT(*) as total_rows 
+                FROM " . $this->table_name . " o
+                LEFT JOIN clientes c ON o.cliente_id = c.id
+                WHERE o.empresa_id = :empresa_id AND o.removido_em IS NULL";
+
+        $params = [":empresa_id" => $empresa_id];
+
+        if (!empty($search)) {
+            $query .= " AND (o.numero_orcamento LIKE :search OR o.referencia LIKE :search OR c.nome LIKE :search)";
+            $params[":search"] = "%" . $search . "%";
+        }
+        if (!empty($status)) {
+            $query .= " AND o.status = :status";
+            $params[":status"] = $status;
+        }
+        if (!empty($cliente_id)) {
+            $query .= " AND o.cliente_id = :cliente_id";
+            $params[":cliente_id"] = $cliente_id;
+        }
+        if (!empty($start_date)) {
+            $query .= " AND o.data_orcamento >= :start_date";
+            $params[":start_date"] = $start_date;
+        }
+        if (!empty($end_date)) {
+            $query .= " AND o.data_orcamento <= :end_date";
+            $params[":end_date"] = $end_date;
+        }
+
+        $stmt = $this->conn->prepare($query);
+        foreach ($params as $key => &$val) {
+            $stmt->bindParam($key, $val);
+        }
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row["total_rows"];
+    }
+
 }
 ?>
-

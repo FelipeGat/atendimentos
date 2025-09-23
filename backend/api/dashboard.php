@@ -8,14 +8,21 @@
 define('DEVELOPMENT_MODE', true);
 
 // Incluir configurações
-require_once 'config/cors.php';
-require_once 'config/db.php';
+require_once __DIR__ . '/../config/cors.php'; // Inclui o arquivo cors.php
+require_once __DIR__ . '/../config/db.php'; // Inclui o arquivo db.php fornecido pelo usuário
+// O util.php já é incluído pelo db.php, então não precisa ser incluído novamente aqui.
 
 try {
     // Obter e validar empresa_id
     $empresa_id = obterEmpresaId();
     if (!$empresa_id) {
         responderErro('ID da empresa não fornecido no cabeçalho X-Empresa-ID', 400);
+    }
+
+    // Obter a conexão PDO do db.php
+    $pdo = getConnection();
+    if (!$pdo) {
+        throw new Exception('Não foi possível obter a conexão PDO.');
     }
 
 } catch (Exception $e) {
@@ -71,6 +78,7 @@ function getDashboardData($pdo, $empresa_id) {
         responderErro('Erro ao obter dados do dashboard', 500);
     }
 }
+
 /**
  * Obter estatísticas gerais
  */
@@ -278,4 +286,3 @@ function getAtendimentosPorPeriodo($pdo, $empresa_id) {
     return $stmt->fetchAll();
 }
 ?>
-

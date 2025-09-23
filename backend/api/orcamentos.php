@@ -7,45 +7,42 @@ header("Access-Control-Max-Age: 86400");
 header("Content-Type: application/json; charset=UTF-8");
 
 // Tratar requisições OPTIONS (preflight)
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
     http_response_code(200);
     exit();
 }
 
-// Incluir arquivos de configuração (mantendo compatibilidade)
-include_once(__DIR__ . "/../config/db.php");
-include_once("Orcamento.php");
+// Incluir arquivos de configuração e classes
+require_once __DIR__ . "/../config/cors.php";
+require_once __DIR__ . "/../config/db.php";
+require_once "Orcamento.php";
 
-// Verificar se a conexão MySQLi foi estabelecida
-if (!isset($conn) || $conn->connect_error) {
-    responderErro("Erro de conexão MySQLi com banco de dados", 500);
-}
-
-// Tentar criar instância da classe Orcamento
+$pdo = null;
 $orcamento = null;
 try {
-    $pdo_conn = getConnection();
-    if ($pdo_conn) {
-        $orcamento = new Orcamento($pdo_conn);
-    } else {
-        responderErro("Erro ao estabelecer conexão PDO para orçamentos", 500);
+    $pdo = getConnection();
+    if (!$pdo) {
+        throw new Exception("Não foi possível obter a conexão PDO.");
     }
+    $orcamento = new Orcamento($pdo);
 } catch (Exception $e) {
-    responderErro("Erro ao inicializar classe Orcamento: " . $e->getMessage(), 500);
+    error_log("Erro na inicialização da API de orçamentos: " . $e->getMessage());
+    responderErro("Erro interno do servidor", 500);
+}
+
+$empresa_id = obterEmpresaId();
+if (!$empresa_id) {
+    responderErro("ID da empresa não fornecido no cabeçalho X-Empresa-ID", 400);
 }
 
 $request_method = $_SERVER["REQUEST_METHOD"];
 
-switch($request_method) {
+switch ($request_method) {
     case 'GET':
         if (isset($_GET["action"]) && $_GET["action"] == "kpis") {
             try {
-                $kpis_data = $orcamento->readKpis();
-                if (!empty($kpis_data)) {
-                    responderSucesso("KPIs obtidos com sucesso", $kpis_data);
-                } else {
-                    responderSucesso("KPIs obtidos com sucesso", new stdClass());
-                }
+                $kpis_data = $orcamento->readKpis($empresa_id);
+                responderSucesso("KPIs obtidos com sucesso", $kpis_data);
             } catch (Exception $e) {
                 responderErro("Erro ao obter KPIs: " . $e->getMessage(), 500);
             }
@@ -82,8 +79,10 @@ switch($request_method) {
                         "removido_em" => $orcamento->removido_em,
                         "empresa_nome" => $orcamento->empresa_nome,
                         "cliente_nome" => $orcamento->cliente_nome,
-                        "itens" => $orcamento->readItems()
+                        "servicos" => $orcamento->servicos ?? [],
+                        "materiais" => $orcamento->materiais ?? []
                     );
+
                     responderSucesso("Orçamento encontrado", $orcamento_arr);
                 } else {
                     responderErro("Orçamento não encontrado", 404);
@@ -93,51 +92,33 @@ switch($request_method) {
             }
         } else {
             try {
-                $filterStatus = isset($_GET["status"]) ? $_GET["status"] : "";
-                $filterStartDate = isset($_GET["start_date"]) ? $_GET["start_date"] : "";
-                $filterEndDate = isset($_GET["end_date"]) ? $_GET["end_date"] : "";
+                $search = isset($_GET["search"]) ? $_GET["search"] : "";
+                $status = isset($_GET["status"]) ? $_GET["status"] : "";
+                $cliente_id = isset($_GET["cliente_id"]) ? $_GET["cliente_id"] : "";
+                $start_date = isset($_GET["start_date"]) ? $_GET["start_date"] : "";
+                $end_date = isset($_GET["end_date"]) ? $_GET["end_date"] : "";
+                $page = isset($_GET["page"]) ? (int)$_GET["page"] : 1;
+                $limit = isset($_GET["limit"]) ? (int)$_GET["limit"] : 10;
+                $offset = ($page - 1) * $limit;
 
-                $stmt = $orcamento->read($filterStatus, $filterStartDate, $filterEndDate);
+                $stmt = $orcamento->readAllWithPagination($empresa_id, $search, $status, $cliente_id, $start_date, $end_date, $offset, $limit);
                 $num = $stmt->rowCount();
 
+                $orcamentos_arr = [];
                 if ($num > 0) {
-                    $orcamentos_arr = array();
                     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                        extract($row);
-                        $orcamento_item = array(
-                            "id" => $id,
-                            "numero_orcamento" => $numero_orcamento,
-                            "empresa_id" => $empresa_id,
-                            "cliente_id" => $cliente_id,
-                            "usuario_id" => $usuario_id,
-                            "referencia" => $referencia,
-                            "data_orcamento" => $data_orcamento,
-                            "validade_orcamento" => $validade_orcamento,
-                            "prazo_inicio" => $prazo_inicio,
-                            "prazo_duracao" => $prazo_duracao,
-                            "observacoes" => $observacoes,
-                            "imposto_percentual" => $imposto_percentual,
-                            "frete" => $frete,
-                            "desconto_valor" => $desconto_valor,
-                            "desconto_percentual" => $desconto_percentual,
-                            "tipo_desconto" => $tipo_desconto,
-                            "condicoes_pagamento" => $condicoes_pagamento,
-                            "meios_pagamento" => $meios_pagamento,
-                            "anotacoes_internas" => $anotacoes_internas,
-                            "valor_total" => $valor_total,
-                            "status" => $status,
-                            "criado_em" => $criado_em,
-                            "atualizado_em" => $atualizado_em,
-                            "removido_em" => $removido_em,
-                            "empresa_nome" => $empresa_nome,
-                            "cliente_nome" => $cliente_nome
-                        );
-                        array_push($orcamentos_arr, $orcamento_item);
+                        $orcamentos_arr[] = $row;
                     }
-                    responderSucesso("Orçamentos encontrados", $orcamentos_arr);
-                } else {
-                    responderSucesso("Nenhum orçamento encontrado", []);
                 }
+
+                $total_rows = $orcamento->countAll($empresa_id, $search, $status, $cliente_id, $start_date, $end_date);
+
+                responderSucesso("Orçamentos encontrados", [
+                    "data" => $orcamentos_arr,
+                    "total_records" => $total_rows,
+                    "current_page" => $page,
+                    "total_pages" => ceil($total_rows / $limit)
+                ]);
             } catch (Exception $e) {
                 responderErro("Erro ao listar orçamentos: " . $e->getMessage(), 500);
             }
@@ -146,107 +127,71 @@ switch($request_method) {
 
     case 'POST':
         try {
-            // Verificar se é FormData (multipart) ou JSON
-            $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-            
-            if (strpos($contentType, 'multipart/form-data') !== false) {
-                // Dados vêm do FormData
+            // Tenta decodificar JSON. Se falhar, usa $_POST.
+            $data = json_decode(file_get_contents("php://input"), true);
+            if (!$data) {
                 $data = $_POST;
-                
-                // Processar arrays JSON se existirem
-                if (isset($data['servicos']) && is_string($data['servicos'])) {
-                    $data['servicos'] = json_decode($data['servicos'], true);
+            }
+
+            if (empty($data["cliente_id"])) {
+                responderErro("Cliente é obrigatório", 400);
+            }
+
+            try {
+                $stmt_cliente = $pdo->prepare("SELECT id FROM clientes WHERE id = ? AND removido_em IS NULL");
+                $stmt_cliente->execute([$data["cliente_id"]]);
+                if (!$stmt_cliente->fetch()) {
+                    responderErro("Cliente selecionado não existe ou foi removido", 400);
                 }
-                if (isset($data['materiais']) && is_string($data['materiais'])) {
-                    $data['materiais'] = json_decode($data['materiais'], true);
-                }
+            } catch (Exception $e) {
+                responderErro("Erro ao validar cliente: " . $e->getMessage(), 500);
+            }
+
+            $orcamento->empresa_id = $empresa_id;
+            $orcamento->cliente_id = $data["cliente_id"];
+            $orcamento->usuario_id = $data["usuario_id"] ?? 1;
+            $orcamento->referencia = $data["referencia"] ?? null;
+            $orcamento->data_orcamento = $data["data_orcamento"] ?? date("Y-m-d");
+            $orcamento->validade_orcamento = $data["validade_orcamento"] ?? null;
+            $orcamento->prazo_inicio = $data["prazo_inicio"] ?? null;
+            $orcamento->prazo_duracao = $data["prazo_duracao"] ?? null;
+            $orcamento->observacoes = $data["observacoes"] ?? null;
+            $orcamento->imposto_percentual = $data["imposto_percentual"] ?? 0;
+            $orcamento->frete = $data["frete"] ?? 0;
+            $orcamento->desconto_valor = $data["desconto_valor"] ?? 0;
+            $orcamento->desconto_percentual = $data["desconto_percentual"] ?? 0;
+            $orcamento->tipo_desconto = $data["tipo_desconto"] ?? "valor";
+            $orcamento->condicoes_pagamento = $data["condicoes_pagamento"] ?? null;
+            $orcamento->meios_pagamento = $data["meios_pagamento"] ?? null;
+            $orcamento->anotacoes_internas = $data["anotacoes_internas"] ?? null;
+            $orcamento->valor_total = $data["valor_total"] ?? 0;
+            $orcamento->status = $data["status"] ?? "rascunho";
+
+            if (empty($data["numero_orcamento"])) {
+                $orcamento->numero_orcamento = $orcamento->getNextNumeroOrcamento($empresa_id);
             } else {
-                // Dados vêm como JSON
-                $input = file_get_contents("php://input");
-                $data = json_decode($input, true);
-                
-                if (!$data && !empty($_POST)) {
-                    $data = $_POST;
-                }
-                
-                if (!$data) {
-                    responderErro("Dados não recebidos ou formato inválido", 400);
-                }
+                $orcamento->numero_orcamento = $data["numero_orcamento"];
             }
-
-            // Log para debug (remover em produção)
-            error_log("Dados recebidos: " . print_r($data, true));
-
-            // Validar dados obrigatórios
-            if (empty($data['empresa_id']) || empty($data['cliente_id'])) {
-                responderErro("Empresa e Cliente são obrigatórios", 400);
-            }
-
-            // Definir propriedades do orçamento
-            $orcamento->numero_orcamento = $data['numero_orcamento'] ?? '';
-            $orcamento->empresa_id = $data['empresa_id'];
-            $orcamento->cliente_id = $data['cliente_id'];
-            $orcamento->usuario_id = $data['usuario_id'] ?? 1;
-            $orcamento->referencia = $data['referencia'] ?? '';
-            $orcamento->data_orcamento = $data['data_orcamento'] ?? date('Y-m-d');
-            $orcamento->validade_orcamento = $data['validade_orcamento'] ?? '';
-            $orcamento->prazo_inicio = $data['prazo_inicio'] ?? '';
-            $orcamento->prazo_duracao = $data['prazo_duracao'] ?? '';
-            $orcamento->observacoes = $data['observacoes'] ?? '';
-            $orcamento->imposto_percentual = $data['imposto_percentual'] ?? 0;
-            $orcamento->frete = $data['frete'] ?? 0;
-            $orcamento->desconto_valor = $data['desconto_valor'] ?? 0;
-            $orcamento->desconto_percentual = $data['desconto_percentual'] ?? 0;
-            $orcamento->tipo_desconto = $data['tipo_desconto'] ?? 'valor';
-            $orcamento->condicoes_pagamento = $data['condicoes_pagamento'] ?? '';
-            $orcamento->meios_pagamento = $data['meios_pagamento'] ?? '';
-            $orcamento->anotacoes_internas = $data['anotacoes_internas'] ?? '';
-            $orcamento->valor_total = $data['valor_total'] ?? 0;
-            $orcamento->status = $data['status'] ?? 'Rascunho';
 
             if ($orcamento->create()) {
-                // Processar itens se existirem
-                if (isset($data['servicos']) && is_array($data['servicos'])) {
-                    foreach ($data['servicos'] as $servico) {
-                        if (!empty($servico['servico'])) {
-                            $item = [
-                                'tipo_item' => 'servico',
-                                'descricao' => $servico['servico'],
-                                'tipo_especifico' => 'servico',
-                                'observacao' => $servico['detalhes'] ?? '',
-                                'quantidade' => $servico['quantidade'] ?? 1,
-                                'valor_unitario' => $servico['preco_unitario'] ?? 0,
-                                'valor_total' => $servico['valor_total'] ?? 0
-                            ];
-                            $orcamento->createItem($item);
-                        }
-                    }
+                // Processar itens (serviços e materiais)
+                // Usar a mesma lógica para JSON ou FormData
+                $servicos = isset($data["servicos"]) ? json_decode($data["servicos"], true) : [];
+                $materiais = isset($data["materiais"]) ? json_decode($data["materiais"], true) : [];
+
+                foreach ($servicos as $servico_data) {
+                    $orcamento->createItem(array_merge($servico_data, ["orcamento_id" => $orcamento->id, "tipo_item" => "Servico"]));
+                }
+                foreach ($materiais as $material_data) {
+                    $orcamento->createItem(array_merge($material_data, ["orcamento_id" => $orcamento->id, "tipo_item" => "Material"]));
                 }
 
-                if (isset($data['materiais']) && is_array($data['materiais'])) {
-                    foreach ($data['materiais'] as $material) {
-                        if (!empty($material['material'])) {
-                            $item = [
-                                'tipo_item' => 'material',
-                                'descricao' => $material['material'],
-                                'tipo_especifico' => 'material',
-                                'observacao' => $material['detalhes'] ?? '',
-                                'quantidade' => $material['quantidade'] ?? 1,
-                                'valor_unitario' => $material['preco_unitario'] ?? 0,
-                                'valor_total' => $material['valor_total'] ?? 0
-                            ];
-                            $orcamento->createItem($item);
-                        }
-                    }
+                // Processar upload de fotos
+                if (isset($_FILES["fotos"])) {
+                    $orcamento->savePhotos($orcamento->id, $_FILES);
                 }
 
-                // Processar upload de fotos se existirem
-                if (isset($_FILES) && !empty($_FILES)) {
-                    // Aqui você pode implementar o upload de fotos
-                    // Por enquanto, apenas registramos que existem arquivos
-                }
-
-                responderSucesso("Orçamento criado com sucesso", ["id" => $orcamento->id]);
+                responderSucesso("Orçamento criado com sucesso", ["id" => $orcamento->id, "numero_orcamento" => $orcamento->numero_orcamento]);
             } else {
                 responderErro("Erro ao criar orçamento", 500);
             }
@@ -257,44 +202,62 @@ switch($request_method) {
 
     case 'PUT':
         try {
-            if (!isset($_GET['id'])) {
+            if (!isset($_GET["id"])) {
                 responderErro("ID do orçamento é obrigatório", 400);
             }
 
-            $input = file_get_contents("php://input");
-            $data = json_decode($input, true);
-            
-            if (!$data && !empty($_POST)) {
+            $data = json_decode(file_get_contents("php://input"), true);
+            if (!$data) {
                 $data = $_POST;
             }
-            
-            if (!$data) {
-                responderErro("Dados não recebidos ou formato inválido", 400);
+
+            $orcamento->id = $_GET["id"];
+            $orcamento->empresa_id = $empresa_id;
+
+            if (!empty($data["cliente_id"])) {
+                try {
+                    $stmt_cliente = $pdo->prepare("SELECT id FROM clientes WHERE id = ? AND removido_em IS NULL");
+                    $stmt_cliente->execute([$data["cliente_id"]]);
+                    if (!$stmt_cliente->fetch()) {
+                        responderErro("Cliente selecionado não existe ou foi removido", 400);
+                    }
+                } catch (Exception $e) {
+                    responderErro("Erro ao validar cliente: " . $e->getMessage(), 500);
+                }
             }
 
-            $orcamento->id = $_GET['id'];
-            $orcamento->numero_orcamento = $data['numero_orcamento'] ?? '';
-            $orcamento->empresa_id = $data['empresa_id'];
-            $orcamento->cliente_id = $data['cliente_id'];
-            $orcamento->usuario_id = $data['usuario_id'] ?? 1;
-            $orcamento->referencia = $data['referencia'] ?? '';
-            $orcamento->data_orcamento = $data['data_orcamento'] ?? date('Y-m-d');
-            $orcamento->validade_orcamento = $data['validade_orcamento'] ?? '';
-            $orcamento->prazo_inicio = $data['prazo_inicio'] ?? '';
-            $orcamento->prazo_duracao = $data['prazo_duracao'] ?? '';
-            $orcamento->observacoes = $data['observacoes'] ?? '';
-            $orcamento->imposto_percentual = $data['imposto_percentual'] ?? 0;
-            $orcamento->frete = $data['frete'] ?? 0;
-            $orcamento->desconto_valor = $data['desconto_valor'] ?? 0;
-            $orcamento->desconto_percentual = $data['desconto_percentual'] ?? 0;
-            $orcamento->tipo_desconto = $data['tipo_desconto'] ?? 'valor';
-            $orcamento->condicoes_pagamento = $data['condicoes_pagamento'] ?? '';
-            $orcamento->meios_pagamento = $data['meios_pagamento'] ?? '';
-            $orcamento->anotacoes_internas = $data['anotacoes_internas'] ?? '';
-            $orcamento->valor_total = $data['valor_total'] ?? 0;
-            $orcamento->status = $data['status'] ?? 'Rascunho';
+            $orcamento->cliente_id = $data["cliente_id"] ?? null;
+            $orcamento->usuario_id = $data["usuario_id"] ?? 1;
+            $orcamento->numero_orcamento = $data["numero_orcamento"] ?? null;
+            $orcamento->referencia = $data["referencia"] ?? null;
+            $orcamento->data_orcamento = $data["data_orcamento"] ?? null;
+            $orcamento->validade_orcamento = $data["validade_orcamento"] ?? null;
+            $orcamento->prazo_inicio = $data["prazo_inicio"] ?? null;
+            $orcamento->prazo_duracao = $data["prazo_duracao"] ?? null;
+            $orcamento->observacoes = $data["observacoes"] ?? null;
+            $orcamento->imposto_percentual = $data["imposto_percentual"] ?? 0;
+            $orcamento->frete = $data["frete"] ?? 0;
+            $orcamento->desconto_valor = $data["desconto_valor"] ?? 0;
+            $orcamento->desconto_percentual = $data["desconto_percentual"] ?? 0;
+            $orcamento->tipo_desconto = $data["tipo_desconto"] ?? "valor";
+            $orcamento->condicoes_pagamento = $data["condicoes_pagamento"] ?? null;
+            $orcamento->meios_pagamento = $data["meios_pagamento"] ?? null;
+            $orcamento->anotacoes_internas = $data["anotacoes_internas"] ?? null;
+            $orcamento->valor_total = $data["valor_total"] ?? 0;
+            $orcamento->status = $data["status"] ?? "rascunho";
 
             if ($orcamento->update()) {
+                // Processar itens (serviços e materiais)
+                $servicos = isset($data["servicos"]) ? json_decode($data["servicos"], true) : [];
+                $materiais = isset($data["materiais"]) ? json_decode($data["materiais"], true) : [];
+
+                $orcamento->updateItems($orcamento->id, $servicos, "Servico");
+                $orcamento->updateItems($orcamento->id, $materiais, "Material");
+
+                if (isset($_FILES["fotos"])) {
+                    $orcamento->savePhotos($orcamento->id, $_FILES);
+                }
+
                 responderSucesso("Orçamento atualizado com sucesso");
             } else {
                 responderErro("Erro ao atualizar orçamento", 500);
@@ -306,11 +269,10 @@ switch($request_method) {
 
     case 'DELETE':
         try {
-            if (!isset($_GET['id'])) {
+            if (!isset($_GET["id"])) {
                 responderErro("ID do orçamento é obrigatório", 400);
             }
-
-            $orcamento->id = $_GET['id'];
+            $orcamento->id = $_GET["id"];
             if ($orcamento->delete()) {
                 responderSucesso("Orçamento removido com sucesso");
             } else {
@@ -326,4 +288,3 @@ switch($request_method) {
         break;
 }
 ?>
-
