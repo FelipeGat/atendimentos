@@ -20,7 +20,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import './Anexos.css';
 
 // Configuração da API
-const API_BASE = "http://localhost/Atendimentos/backend/api";
+const API_BASE = process.env.REACT_APP_API_BASE_URL;
 
 const AnexosCorrigidoCompleto = ({ atendimentoId, onClose }) => {
     // Estados principais

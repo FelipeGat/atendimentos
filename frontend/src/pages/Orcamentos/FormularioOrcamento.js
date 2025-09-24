@@ -19,7 +19,7 @@ import api from '../../utils/api';
 import toast from 'react-hot-toast';
 import './FormularioOrcamento.css';
 
-const API_BASE = "http://localhost/Atendimentos/backend/api/orcamentos.php";
+const API_BASE = `${process.env.REACT_APP_API_BASE_URL}/orcamentos.php`;
 
 const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, onCancel }) => {
     // Estados do formulário principal

@@ -48,7 +48,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
                         {/* 3. Renderizar com base no estado 'currentUser' */}
                         {currentUser?.foto ? (
                             <img
-                                src={`http://localhost/Atendimentos/backend/api/${currentUser.foto}`}
+                                src={`${process.env.REACT_APP_API_BASE_URL}/${currentUser.foto}`}
                                 alt="Foto do usuário"
                                 className="user-avatar"
                             />

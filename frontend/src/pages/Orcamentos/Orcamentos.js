@@ -9,7 +9,7 @@ import './Orcamentos.css';
 
 import FormularioComponent from './FormularioOrcamento';
 
-const API_BASE = "http://localhost/Atendimentos/backend/api/orcamentos.php";
+const API_BASE = `${process.env.REACT_APP_API_BASE_URL}/orcamentos.php`;
 
 const OrcamentosPrincipal = () => {
     // Garanta que o estado inicial seja sempre um array
@@ -64,8 +64,8 @@ const OrcamentosPrincipal = () => {
         try {
             const [orcamentosResult, empresasResult, clientesResult] = await Promise.all([
                 apiRequest(API_BASE),
-                apiRequest(`http://localhost/Atendimentos/backend/api/empresas.php`),
-                apiRequest(`http://localhost/Atendimentos/backend/api/clientes.php`)
+                apiRequest(`${process.env.REACT_APP_API_BASE_URL}/empresas.php`),
+                apiRequest(`${process.env.REACT_APP_API_BASE_URL}/clientes.php`)
             ]);
 
             // Validação robusta: garante que estamos recebendo um array

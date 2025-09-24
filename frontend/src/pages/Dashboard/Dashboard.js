@@ -87,6 +87,11 @@ const Dashboard = () => {
 
     const { estatisticas } = dashboardData;
 
+    // Função auxiliar para obter valores seguros de estatisticas
+    const getEstatisticaValue = (key, defaultValue = 0) => {
+        return estatisticas && estatisticas[key] !== undefined ? estatisticas[key] : defaultValue;
+    };
+
     return (
         <div className="dashboard-container">
             <div className="dashboard-header">
@@ -105,7 +110,7 @@ const Dashboard = () => {
                         <div className="kpi-icon">👥</div>
                         <div className="kpi-content">
                             <h3>Clientes Ativos</h3>
-                            <span className="kpi-value">{formatNumber(estatisticas.total_clientes)}</span>
+                            <span className="kpi-value">{formatNumber(getEstatisticaValue('total_clientes'))}</span>
                         </div>
                     </div>
 
@@ -113,7 +118,7 @@ const Dashboard = () => {
                         <div className="kpi-icon">🖥️</div>
                         <div className="kpi-content">
                             <h3>Equipamentos</h3>
-                            <span className="kpi-value">{formatNumber(estatisticas.total_equipamentos)}</span>
+                            <span className="kpi-value">{formatNumber(getEstatisticaValue('total_equipamentos'))}</span>
                         </div>
                     </div>
 
@@ -121,7 +126,7 @@ const Dashboard = () => {
                         <div className="kpi-icon">📋</div>
                         <div className="kpi-content">
                             <h3>Total Atendimentos</h3>
-                            <span className="kpi-value">{formatNumber(estatisticas.total_atendimentos)}</span>
+                            <span className="kpi-value">{formatNumber(getEstatisticaValue('total_atendimentos'))}</span>
                         </div>
                     </div>
 
@@ -129,7 +134,7 @@ const Dashboard = () => {
                         <div className="kpi-icon">🔓</div>
                         <div className="kpi-content">
                             <h3>Atendimentos Abertos</h3>
-                            <span className="kpi-value">{formatNumber(estatisticas.atendimentos_abertos)}</span>
+                            <span className="kpi-value">{formatNumber(getEstatisticaValue('atendimentos_abertos'))}</span>
                         </div>
                     </div>
 
@@ -137,7 +142,7 @@ const Dashboard = () => {
                         <div className="kpi-icon">✅</div>
                         <div className="kpi-content">
                             <h3>Concluídos Este Mês</h3>
-                            <span className="kpi-value">{formatNumber(estatisticas.atendimentos_mes)}</span>
+                            <span className="kpi-value">{formatNumber(getEstatisticaValue('atendimentos_mes'))}</span>
                         </div>
                     </div>
 
@@ -145,7 +150,7 @@ const Dashboard = () => {
                         <div className="kpi-icon">💰</div>
                         <div className="kpi-content">
                             <h3>Receita do Mês</h3>
-                            <span className="kpi-value">{formatCurrency(estatisticas.receita_mes)}</span>
+                            <span className="kpi-value">{formatCurrency(getEstatisticaValue('receita_mes'))}</span>
                         </div>
                     </div>
                 </div>

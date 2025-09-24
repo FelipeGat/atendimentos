@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import './Empresas.css';
 
+// Função para obter headers padrão
+const getDefaultHeaders = (isFormData = false, empresaId = null) => {
+    const headers = {};
+    if (empresaId) {
+        headers['X-Empresa-ID'] = empresaId;
+    }
+    if (!isFormData) {
+        headers['Content-Type'] = 'application/json';
+    }
+    return headers;
+};
+
 const EmpresasCompleto = () => {
     const [empresas, setEmpresas] = useState([]);
     const [segmentos, setSegmentos] = useState([]);
@@ -58,20 +70,20 @@ const EmpresasCompleto = () => {
         try {
             setLoading(true);
 
-            // Carregar empresas
-            const empresasResponse = await fetch('http://localhost/Atendimentos/backend/api/empresas.php', {
-                headers: { 'X-Empresa-ID': '1' }
-            });
-
-            // Carregar segmentos
-            const segmentosResponse = await fetch('http://localhost/Atendimentos/backend/api/segmentos.php', {
-                headers: { 'X-Empresa-ID': '1' }
-            });
-
-            // Carregar usuários
-            const usuariosResponse = await fetch('http://localhost/Atendimentos/backend/api/usuarios.php', {
-                headers: { 'X-Empresa-ID': '1' }
-            });
+            const [empresasResponse, segmentosResponse, usuariosResponse] = await Promise.all([
+                fetch(`${process.env.REACT_APP_API_BASE_URL}/empresas.php`, {
+                    method: 'GET',
+                    headers: getDefaultHeaders()
+                }),
+                fetch(`${process.env.REACT_APP_API_BASE_URL}/segmentos.php`, {
+                    method: 'GET',
+                    headers: getDefaultHeaders()
+                }),
+                fetch(`${process.env.REACT_APP_API_BASE_URL}/usuarios.php`, {
+                    method: 'GET',
+                    headers: getDefaultHeaders()
+                })
+            ]);
 
             // Processar respostas
             if (empresasResponse.ok) {
@@ -223,7 +235,7 @@ const EmpresasCompleto = () => {
 
         try {
             // Envia os dados como JSON para o PUT/POST
-            const url = 'http://localhost/Atendimentos/backend/api/empresas.php';
+            const url = `${process.env.REACT_APP_API_BASE_URL}/empresas.php`;
             const method = editingEmpresa ? 'PUT' : 'POST';
 
             let dataToSend = { ...formData };
@@ -294,7 +306,7 @@ const EmpresasCompleto = () => {
         }
 
         try {
-            const response = await fetch(`http://localhost/Atendimentos/backend/api/empresas.php?id=${id}`, {
+            const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/empresas.php?id=${id}`, {
                 method: 'DELETE',
                 headers: { 'X-Empresa-ID': '1' }
             });
@@ -376,7 +388,8 @@ const EmpresasCompleto = () => {
 
         // Preview da logo existente
         if (empresa.logomarca) {
-            setLogoPreview(`http://localhost/Atendimentos/uploads/logos/${empresa.logomarca}`);
+            const imgBaseUrl = process.env.REACT_APP_IMG_BASE_URL || 'http://localhost/Atendimentos/backend/uploads';
+            setLogoPreview(`${imgBaseUrl}/logos/${empresa.logomarca}`);
         } else {
             setLogoPreview(null);
         }

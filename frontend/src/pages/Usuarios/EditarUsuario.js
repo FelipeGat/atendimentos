@@ -37,7 +37,7 @@ const EditarUsuario = () => {
 
             try {
                 setLoading(true);
-                const response = await axios.get(`http://localhost/Atendimentos/backend/api/usuarios.php?id=${id}`);
+                const response = await axios.get(`${process.env.REACT_APP_API_BASE_URL}/usuarios.php?id=${id}`);
                 const userData = response.data.data;
 
                 setFormData({
@@ -54,7 +54,7 @@ const EditarUsuario = () => {
 
                 // Define a pré-visualização da foto, se existir
                 if (userData.foto) {
-                    setFotoPreview(`http://localhost/Atendimentos/backend/api/${userData.foto}`);
+                    setFotoPreview(`${process.env.REACT_APP_API_BASE_URL}/${userData.foto}`);
                 } else {
                     setFotoPreview(null);
                 }
@@ -115,7 +115,7 @@ const EditarUsuario = () => {
         try {
             setLoading(true);
             const response = await axios.post(
-                `http://localhost/Atendimentos/backend/api/usuarios.php?id=${id}`,
+                `${process.env.REACT_APP_API_BASE_URL}/usuarios.php?id=${id}`,
                 dataToUpdate,
                 {
                     headers: {
