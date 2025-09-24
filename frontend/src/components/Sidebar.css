@@ -1,0 +1,170 @@
+/* src/components/Sidebar.css */
+.sidebar {
+    width: 260px;
+    /* Largura padrão */
+    background-color: #007bff;
+    /* Um azul mais padrão, ajuste se preferir o seu */
+    color: white;
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    transition: width 0.3s ease;
+    /* Animação da largura */
+    z-index: 100;
+}
+
+/* Estilo quando a sidebar está recolhida */
+.sidebar.collapsed {
+    width: 80px;
+    /* Largura recolhida */
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Centraliza o botão de toggle quando recolhido */
+    padding: 15px;
+    position: relative;
+    min-height: 70px;
+}
+
+.sidebar.collapsed .sidebar-header {
+    padding: 15px 0;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    width: 100%;
+}
+
+.user-info span {
+    font-weight: 600;
+    display: block;
+}
+
+.user-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.user-actions svg {
+    cursor: pointer;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.user-actions svg:hover {
+    opacity: 1;
+}
+
+.toggle-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: absolute;
+    right: 15px;
+    transition: transform 0.3s ease, background-color 0.2s;
+}
+
+.toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.sidebar.collapsed .toggle-btn {
+    position: static;
+    /* Remove o posicionamento absoluto quando recolhido */
+    transform: rotate(180deg);
+    /* Gira a seta */
+}
+
+.menu {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 0 15px;
+}
+
+.menu-section h4 {
+    padding: 10px 5px;
+    margin: 15px 0 5px 0;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: rgba(255, 255, 255, 0.7);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.sidebar.collapsed .menu-section h4 {
+    display: none;
+    /* Esconde os títulos das seções */
+}
+
+.menu ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.menu li a {
+    display: flex;
+    align-items: center;
+    padding: 12px 10px;
+    border-radius: 6px;
+    color: white;
+    text-decoration: none;
+    margin: 5px 0;
+    gap: 15px;
+    transition: background-color 0.2s;
+    white-space: nowrap;
+    /* Impede que o texto quebre linha */
+    overflow: hidden;
+    /* Esconde o texto que transborda */
+}
+
+.menu li a:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Estilo do link ativo */
+.menu li a.active-link {
+    background-color: rgba(255, 255, 255, 0.2);
+    font-weight: 600;
+}
+
+.menu li a span {
+    transition: opacity 0.2s ease;
+}
+
+.sidebar.collapsed .menu li a span {
+    opacity: 0;
+    /* Esconde o texto dos links */
+    width: 0;
+}
+
+.sidebar.collapsed .menu li a {
+    justify-content: center;
+    /* Centraliza o ícone */
+    padding: 12px;
+}
+
+.user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}

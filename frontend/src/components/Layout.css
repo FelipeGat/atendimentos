@@ -1,0 +1,22 @@
+/* src/components/Layout.css */
+.layout-container {
+    display: flex;
+    min-height: 100vh;
+    background-color: #f4f7f6;
+    /* Cor de fundo para a área de conteúdo */
+}
+
+.main-content {
+    flex-grow: 1;
+    margin-left: 260px;
+    /* Mesmo valor da largura da sidebar */
+    padding: 20px;
+    transition: margin-left 0.3s ease;
+    /* Animação da margem */
+}
+
+/* Ajusta a margem quando a sidebar está recolhida */
+.main-content.collapsed {
+    margin-left: 80px;
+    /* Mesmo valor da largura recolhida da sidebar */
+}
