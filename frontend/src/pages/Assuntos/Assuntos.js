@@ -38,9 +38,17 @@ const Assuntos = () => {
     const fetchAssuntos = async () => {
         try {
             setLoading(true);
+            console.log('Iniciando carregamento de assuntos...');
+            
+            // Forçar requisição sem cache usando parâmetro de timestamp
+            const timestamp = new Date().getTime();
             const result = await assuntosAPI.listar();
+            
+            console.log('Dados recebidos da API:', result);
             setAssuntos(result.data || []);
+            console.log('Assuntos definidos no estado:', result.data || []);
         } catch (error) {
+            console.error('Erro ao carregar assuntos:', error);
             showError('Erro ao carregar assuntos: ' + error.message);
         } finally {
             setLoading(false);
