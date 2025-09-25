@@ -41,7 +41,8 @@ logAtividade("Dados recebidos: " . file_get_contents("php://input"));
 switch ($metodo) {
     case 'GET':
         logAtividade("Iniciando operação GET");
-        $sql = "SELECT id, nome, criado_em FROM assuntos ORDER BY nome ASC";
+        // Modificar a query para excluir registros marcados como removidos
+        $sql = "SELECT id, nome, criado_em FROM assuntos WHERE removido_em IS NULL ORDER BY nome ASC";
         $resultado = $conn->query($sql);
 
         if (!$resultado) {
@@ -146,28 +147,29 @@ switch ($metodo) {
         break;
 
     case 'DELETE':
-        logAtividade("Iniciando operação DELETE");
+        logAtividade("Iniciando operação DELETE (soft delete)");
         $id = $_GET['id'] ?? null;
 
         if (!$id) {
             responderErro("Campo obrigatório: id.", 400);
         }
 
-        logAtividade("Tentando excluir assunto ID: " . $id);
-        $stmt = $conn->prepare("DELETE FROM assuntos WHERE id = ?");
+        logAtividade("Tentando marcar assunto como removido. ID: " . $id);
+        // Modificar para usar soft delete em vez de exclusão física
+        $stmt = $conn->prepare("UPDATE assuntos SET removido_em = NOW() WHERE id = ? AND removido_em IS NULL");
         $stmt->bind_param("i", $id);
 
         if ($stmt->execute()) {
             if ($stmt->affected_rows > 0) {
-                logAtividade("Assunto excluído com sucesso. ID: " . $id);
-                responderSucesso("Assunto excluído com sucesso.");
+                logAtividade("Assunto marcado como removido com sucesso. ID: " . $id);
+                responderSucesso("Assunto removido com sucesso.");
             } else {
-                logAtividade("Nenhum assunto encontrado com ID: " . $id . " para exclusão");
-                responderErro("Nenhum assunto encontrado com o ID fornecido.", 404);
+                logAtividade("Nenhum assunto encontrado com ID: " . $id . " para remoção ou já estava removido");
+                responderErro("Nenhum assunto encontrado com o ID fornecido ou já estava removido.", 404);
             }
         } else {
-            logAtividade("Erro na query DELETE: " . $stmt->error);
-            responderErro("Erro ao excluir assunto: " . $stmt->error, 500);
+            logAtividade("Erro na query DELETE (soft delete): " . $stmt->error);
+            responderErro("Erro ao remover assunto: " . $stmt->error, 500);
         }
 
         $stmt->close();

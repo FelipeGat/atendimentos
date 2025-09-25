@@ -38,17 +38,9 @@ const Assuntos = () => {
     const fetchAssuntos = async () => {
         try {
             setLoading(true);
-            console.log('Iniciando carregamento de assuntos...');
-            
-            // Forçar requisição sem cache usando parâmetro de timestamp
-            const timestamp = new Date().getTime();
             const result = await assuntosAPI.listar();
-            
-            console.log('Dados recebidos da API:', result);
             setAssuntos(result.data || []);
-            console.log('Assuntos definidos no estado:', result.data || []);
         } catch (error) {
-            console.error('Erro ao carregar assuntos:', error);
             showError('Erro ao carregar assuntos: ' + error.message);
         } finally {
             setLoading(false);
@@ -121,22 +113,22 @@ const Assuntos = () => {
         }
     };
 
-    // Excluir assunto
+    // Excluir assunto (soft delete)
     const handleDelete = async (assunto) => {
-        if (!window.confirm(`Tem certeza que deseja excluir o assunto "${assunto.nome}"?`)) {
+        if (!window.confirm(`Tem certeza que deseja remover o assunto "${assunto.nome}"? O assunto será ocultado mas mantido no sistema.`)) {
             return;
         }
 
         try {
             await assuntosAPI.excluir(assunto.id);
-            showSuccess('Assunto excluído com sucesso');
-            // Remover o assunto da lista
+            showSuccess('Assunto removido com sucesso');
+            // Remover o assunto da lista atual
             setAssuntos(prevAssuntos => 
                 prevAssuntos.filter(item => item.id !== assunto.id)
             );
             
         } catch (error) {
-            showError('Erro ao excluir assunto: ' + error.message);
+            showError('Erro ao remover assunto: ' + error.message);
         }
     };
 
@@ -236,9 +228,9 @@ const Assuntos = () => {
                                             <button
                                                 className="btn-delete"
                                                 onClick={() => handleDelete(assunto)}
-                                                title="Excluir assunto"
+                                                title="Remover assunto"
                                             >
-                                                🗑️ Excluir
+                                                🗑️ Remover
                                             </button>
                                         </td>
                                     </tr>
