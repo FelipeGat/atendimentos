@@ -26,12 +26,13 @@ const Clientes = () => {
         observacoes: '',
         ativo: 1
     });
-
     // Estados para controle das APIs
     const [documentoLoading, setDocumentoLoading] = useState(false);
     const [cepLoading, setCepLoading] = useState(false);
     const [documentoError, setDocumentoError] = useState('');
     const [cepError, setCepError] = useState('');
+    
+    
 
     const { message, showSuccess, showError } = useMessage();
     const {
@@ -219,6 +220,16 @@ const Clientes = () => {
             return false;
         }
 
+        if (!formData.cpf_cnpj.trim()) {
+            showError('CPF/CNPJ é obrigatório');
+            return false;
+        }
+
+        if (!formData.telefone.trim()) {
+            showError('Telefone é obrigatório');
+            return false;
+        }
+
         if (formData.email && !/^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$/.test(formData.email)) {
             showError('Email inválido');
             return false;
@@ -249,6 +260,7 @@ const Clientes = () => {
         try {
             const dataToSave = {
                 ...formData,
+                id: editingCliente ? editingCliente.id : undefined, // Adiciona o ID no corpo da requisição para atualização
                 nome: formData.nome.trim(),
                 email: formData.email.trim(),
                 telefone: formData.telefone.trim(),
@@ -260,20 +272,23 @@ const Clientes = () => {
                 cep: formData.cep.replace(/\D/g, ''),
                 observacoes: formData.observacoes.trim(),
                 segmentos_ids: formData.segmentos_ids.map(id => parseInt(id)),
-
             };
 
             if (editingCliente) {
                 await clientesAPI.atualizar(editingCliente.id, dataToSave);
                 showSuccess('Cliente atualizado com sucesso');
             } else {
+                // Remover o ID do objeto de dados para criação (não é necessário)
+                delete dataToSave.id;
                 await clientesAPI.criar(dataToSave);
                 showSuccess('Cliente criado com sucesso');
             }
 
             handleCloseModal();
-            fetchData();
+            await fetchData(); // Aguardar o carregamento dos dados após salvar
         } catch (error) {
+            // Certificar que o erro apareça acima do modal
+            console.error('Erro ao salvar cliente:', error);
             showError('Erro ao salvar cliente: ' + error.message);
         }
     };
@@ -292,6 +307,8 @@ const Clientes = () => {
             showError('Erro ao excluir cliente: ' + error.message);
         }
     };
+
+
 
     // Formatar CPF/CNPJ
     const formatDocumento = (value) => {
@@ -342,6 +359,8 @@ const Clientes = () => {
                     {message.text}
                 </div>
             )}
+
+            
 
             {/* Cabeçalho */}
             <div className="clientes-header">
@@ -498,14 +517,14 @@ const Clientes = () => {
                                     <h3 className="section-title">Informações Básicas</h3>
                                     <div className="form-grid">
                                         <div className="form-group">
-                                            <label htmlFor="nome">Nome/Razão Social:</label>
+                                            <label htmlFor="nome">Nome/Razão Social: *</label>
                                             <input
                                                 type="text"
                                                 id="nome"
                                                 name="nome"
                                                 value={formData.nome}
                                                 onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                                                placeholder="Nome ou Razão Social do Cliente"
+                                                placeholder="Nome ou Razão Social do Cliente (obrigatório)"
                                                 required
                                             />
                                         </div>
@@ -521,18 +540,18 @@ const Clientes = () => {
                                             />
                                         </div>
                                         <div className="form-group">
-                                            <label htmlFor="telefone">Telefone:</label>
+                                            <label htmlFor="telefone">Telefone: *</label>
                                             <input
                                                 type="text"
                                                 id="telefone"
                                                 name="telefone"
                                                 value={formData.telefone}
                                                 onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
-                                                placeholder="(XX) XXXXX-XXXX"
+                                                placeholder="(XX) XXXXX-XXXX (obrigatório)"
                                             />
                                         </div>
                                         <div className="form-group">
-                                            <label htmlFor="cpf_cnpj">CPF/CNPJ:</label>
+                                            <label htmlFor="cpf_cnpj">CPF/CNPJ: *</label>
                                             <input
                                                 type="text"
                                                 id="cpf_cnpj"
@@ -540,7 +559,7 @@ const Clientes = () => {
                                                 value={formatDocumento(formData.cpf_cnpj)}
                                                 onChange={(e) => setFormData({ ...formData, cpf_cnpj: e.target.value })}
                                                 onBlur={(e) => consultarDocumento(e.target.value)}
-                                                placeholder="CPF ou CNPJ"
+                                                placeholder="CPF ou CNPJ (obrigatório)"
                                             />
                                             {documentoLoading && <span className="loading-spinner"></span>}
                                             {documentoError && <span className="api-error">{documentoError}</span>}
