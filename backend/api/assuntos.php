@@ -94,21 +94,39 @@ switch ($metodo) {
     case 'PUT':
         logAtividade("Iniciando operação PUT");
         $dados = json_decode(file_get_contents("php://input"), true);
-
-        if (!isset($dados['id']) || !isset($dados['nome'])) {
-            responderErro("Campos obrigatórios: id, nome.", 400);
+        logAtividade("Dados recebidos para PUT: " . json_encode($dados));
+        
+        // Obter o ID tanto do parâmetro de URL quanto do corpo da requisição
+        $url_id = $_GET['id'] ?? null;
+        $body_id = isset($dados['id']) ? $dados['id'] : null;
+        
+        // Usar o ID do corpo da requisição se estiver disponível, senão usar o da URL
+        $id = $body_id ?: $url_id;
+        
+        logAtividade("ID do assunto para atualizar: URL_ID={$url_id}, BODY_ID={$body_id}, Usando: {$id}");
+        
+        if (!$id || !isset($dados['nome'])) {
+            logAtividade("Campos obrigatórios ausentes. ID={$id}, Nome=" . (isset($dados['nome']) ? $dados['nome'] : 'N/A'));
+            responderErro("Campos obrigatórios: id (como parâmetro ou no corpo), nome.", 400);
         }
 
-        logAtividade("Tentando atualizar assunto ID: " . $dados['id'] . " com nome: " . $dados['nome']);
+        logAtividade("Tentando atualizar assunto ID: " . $id . " com nome: " . $dados['nome']);
         $stmt = $conn->prepare("UPDATE assuntos SET nome = ? WHERE id = ?");
-        $stmt->bind_param("si", $dados['nome'], $dados['id']);
+        if (!$stmt) {
+            logAtividade("Erro na preparação da query: " . $conn->error);
+            responderErro("Erro na preparação da query: " . $conn->error, 500);
+        }
+        
+        $stmt->bind_param("si", $dados['nome'], $id);
+        logAtividade("Query preparada e parâmetros vinculados");
 
         if ($stmt->execute()) {
+            logAtividade("Query executada com sucesso. Rows affected: " . $stmt->affected_rows);
             if ($stmt->affected_rows > 0) {
                 // Retornar o assunto atualizado
                 $sql = "SELECT id, nome, criado_em FROM assuntos WHERE id = ?";
                 $stmt_select = $conn->prepare($sql);
-                $stmt_select->bind_param("i", $dados['id']);
+                $stmt_select->bind_param("i", $id);
                 $stmt_select->execute();
                 $resultado = $stmt_select->get_result();
                 $assunto_atualizado = $resultado->fetch_assoc();
@@ -116,7 +134,7 @@ switch ($metodo) {
                 logAtividade("Assunto atualizado: ID=" . $assunto_atualizado['id'] . ", Nome=" . $assunto_atualizado['nome']);
                 responderSucesso("Assunto atualizado com sucesso.", $assunto_atualizado);
             } else {
-                logAtividade("Nenhum assunto encontrado com ID: " . $dados['id']);
+                logAtividade("Nenhum assunto encontrado com ID: " . $id . " para atualizar");
                 responderErro("Nenhum assunto encontrado com o ID fornecido.", 404);
             }
         } else {
