@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste Assuntos Frontend</title>
+</head>
+<body>
+    <h1>Teste de Assuntos - Simulação Frontend</h1>
+    
+    <div>
+        <h3>Criar Assunto</h3>
+        <input type="text" id="nomeAssunto" placeholder="Nome do Assunto">
+        <button onclick="criarAssunto()">Criar</button>
+    </div>
+    
+    <div>
+        <h3>Listar Assuntos</h3>
+        <button onclick="listarAssuntos()">Listar</button>
+        <div id="listaAssuntos"></div>
+    </div>
+    
+    <div id="resultado"></div>
+
+    <script>
+        async function criarAssunto() {
+            const nome = document.getElementById('nomeAssunto').value;
+            
+            const response = await fetch('http://localhost/Atendimentos/backend/api/assuntos.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Empresa-ID': '1'
+                },
+                body: JSON.stringify({ nome: nome })
+            });
+            
+            const result = await response.json();
+            document.getElementById('resultado').innerHTML = '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+        }
+        
+        async function listarAssuntos() {
+            const response = await fetch('http://localhost/Atendimentos/backend/api/assuntos.php', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Empresa-ID': '1'
+                }
+            });
+            
+            const result = await response.json();
+            document.getElementById('listaAssuntos').innerHTML = '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+        }
+    </script>
+</body>
+</html>

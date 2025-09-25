@@ -1,12 +1,4 @@
 <?php
-// Habilitar relatório de erros para debugging em produção
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-ini_set('log_errors', 1);
-
-// Registrar todos os erros em um arquivo para debug
-ini_set('error_log', __DIR__ . '/../logs/php_errors.log');
-
 require_once __DIR__ . "/../config/db.php";
 require_once __DIR__ . "/../config/util.php";
 
@@ -16,11 +8,6 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 
-// Evitar cache para garantir dados atualizados
-header("Cache-Control: no-cache, no-store, must-revalidate");
-header("Pragma: no-cache");
-header("Expires: 0");
-
 // Tratar requisição OPTIONS (pré-flight CORS)
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -29,18 +16,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 $metodo = $_SERVER['REQUEST_METHOD'];
 
-// Log de debug
-error_log("Método recebido: " . $metodo);
-error_log("Dados recebidos: " . file_get_contents("php://input"));
-
 switch ($metodo) {
     case 'GET':
-        error_log("Iniciando operação GET");
         $sql = "SELECT id, nome, criado_em FROM assuntos ORDER BY nome ASC";
         $resultado = $conn->query($sql);
 
         if (!$resultado) {
-            error_log("Erro na query GET: " . $conn->error);
             responderErro("Erro ao buscar assuntos: " . $conn->error, 500);
         }
 
@@ -53,7 +34,6 @@ switch ($metodo) {
         break;
 
     case 'POST':
-        error_log("Iniciando operação POST");
         $dados = json_decode(file_get_contents("php://input"), true);
 
         if (!isset($dados['nome']) || empty(trim($dados['nome']))) {
@@ -73,7 +53,6 @@ switch ($metodo) {
             ];
             responderSucesso("Assunto cadastrado com sucesso.", $novo_assunto);
         } else {
-            error_log("Erro na query POST: " . $stmt->error);
             responderErro("Erro ao cadastrar assunto: " . $stmt->error, 500);
         }
 
@@ -81,7 +60,6 @@ switch ($metodo) {
         break;
 
     case 'PUT':
-        error_log("Iniciando operação PUT");
         $dados = json_decode(file_get_contents("php://input"), true);
 
         if (!isset($dados['id']) || !isset($dados['nome'])) {
@@ -106,7 +84,6 @@ switch ($metodo) {
                 responderErro("Nenhum assunto encontrado com o ID fornecido.", 404);
             }
         } else {
-            error_log("Erro na query PUT: " . $stmt->error);
             responderErro("Erro ao atualizar assunto: " . $stmt->error, 500);
         }
 
@@ -114,7 +91,6 @@ switch ($metodo) {
         break;
 
     case 'DELETE':
-        error_log("Iniciando operação DELETE");
         $id = $_GET['id'] ?? null;
 
         if (!$id) {
@@ -131,7 +107,6 @@ switch ($metodo) {
                 responderErro("Nenhum assunto encontrado com o ID fornecido.", 404);
             }
         } else {
-            error_log("Erro na query DELETE: " . $stmt->error);
             responderErro("Erro ao excluir assunto: " . $stmt->error, 500);
         }
 
