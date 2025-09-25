@@ -13,6 +13,14 @@ const Assuntos = () => {
     const [editingAssunto, setEditingAssunto] = useState(null);
     const [formData, setFormData] = useState({ nome: '' });
 
+    // Função para formatar datas de forma segura
+    const formatDate = (dateString) => {
+        if (!dateString) return '-';
+        const d = new Date(dateString);
+        if (isNaN(d.getTime())) return dateString;
+        return d.toLocaleDateString('pt-BR');
+    };
+
     const { message, showSuccess, showError } = useMessage();
     const {
         searchTerm,
@@ -74,33 +82,53 @@ const Assuntos = () => {
         }
 
         try {
+            let response;
             if (editingAssunto) {
                 await assuntosAPI.atualizar(editingAssunto.id, formData);
                 showSuccess('Assunto atualizado com sucesso');
+                // Atualizar o assunto existente na lista mantendo a data original de criação
+                setAssuntos(prevAssuntos => 
+                    prevAssuntos.map(assunto => 
+                        assunto.id === editingAssunto.id 
+                            ? { ...assunto, ...formData, criado_em: assunto.criado_em } 
+                            : assunto
+                    )
+                );
             } else {
-                await assuntosAPI.criar(formData);
+                response = await assuntosAPI.criar(formData);
                 showSuccess('Assunto criado com sucesso');
+                // Adicionar o novo assunto à lista
+                const novoAssunto = response.data ? response.data : { 
+                    ...formData, 
+                    id: Date.now(), 
+                    criado_em: new Date().toISOString()
+                };
+                setAssuntos(prevAssuntos => [...prevAssuntos, novoAssunto]);
             }
 
             handleCloseModal();
-            fetchAssuntos();
+            
         } catch (error) {
             showError('Erro ao salvar assunto: ' + error.message);
         }
     };
 
-    // Excluir assunto
+    // Excluir assunto (soft delete)
     const handleDelete = async (assunto) => {
-        if (!window.confirm(`Tem certeza que deseja excluir o assunto "${assunto.nome}"?`)) {
+        if (!window.confirm(`Tem certeza que deseja remover o assunto "${assunto.nome}"? O assunto será ocultado mas mantido no sistema.`)) {
             return;
         }
 
         try {
             await assuntosAPI.excluir(assunto.id);
-            showSuccess('Assunto excluído com sucesso');
-            fetchAssuntos();
+            showSuccess('Assunto removido com sucesso');
+            // Remover o assunto da lista atual
+            setAssuntos(prevAssuntos => 
+                prevAssuntos.filter(item => item.id !== assunto.id)
+            );
+            
         } catch (error) {
-            showError('Erro ao excluir assunto: ' + error.message);
+            showError('Erro ao remover assunto: ' + error.message);
         }
     };
 
@@ -188,7 +216,7 @@ const Assuntos = () => {
                                     <tr key={assunto.id}>
                                         <td>{assunto.id}</td>
                                         <td>{assunto.nome}</td>
-                                        <td>{new Date(assunto.criado_em).toLocaleDateString('pt-BR')}</td>
+                                        <td>{formatDate(assunto.criado_em)}</td>
                                         <td className="actions-cell">
                                             <button
                                                 className="btn-edit"
@@ -200,9 +228,9 @@ const Assuntos = () => {
                                             <button
                                                 className="btn-delete"
                                                 onClick={() => handleDelete(assunto)}
-                                                title="Excluir assunto"
+                                                title="Remover assunto"
                                             >
-                                                🗑️ Excluir
+                                                🗑️ Remover
                                             </button>
                                         </td>
                                     </tr>
