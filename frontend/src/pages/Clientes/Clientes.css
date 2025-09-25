@@ -18,10 +18,11 @@
     gap: 12px;
     position: fixed;
     top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
+    right: 0;
+    margin: 0 auto;
     z-index: 9999 !important; /* Garantir que as mensagens apareçam acima de tudo */
-    width: auto;
+    width: fit-content;
     max-width: 90%;
     min-width: 300px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
