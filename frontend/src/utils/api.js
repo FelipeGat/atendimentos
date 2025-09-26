@@ -172,3 +172,11 @@ export const empresasAPI = {
     atualizar: (id, data) => api.put('empresas.php', id, data),
     excluir: (id) => api.delete('empresas.php', id)
 };
+
+export const orcamentosAPI = {
+    listar: (params = {}) => api.get('orcamentos.php', null, { empresaId: params.empresaId }),
+    buscar: (id, params = {}) => api.get('orcamentos.php', id, { empresaId: params.empresaId }),
+    criar: (data) => api.post('orcamentos.php', data, { empresaId: data.empresa_id }),
+    atualizar: (id, data) => api.put('orcamentos.php', id, data, { empresaId: data.empresa_id }),
+    excluir: (id, empresaId) => api.delete('orcamentos.php', id, { empresaId })
+};
