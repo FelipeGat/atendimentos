@@ -4,9 +4,13 @@
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
+/**
+ * Monta os cabeçalhos padrão, incluindo o X-Empresa-ID se fornecido.
+ */
 const getDefaultHeaders = (isFormData = false, empresaId = null) => {
     const headers = {};
     if (empresaId) {
+        // CORREÇÃO CRÍTICA: Adiciona o ID da empresa ao cabeçalho
         headers['X-Empresa-ID'] = empresaId;
     }
     if (!isFormData) {
@@ -22,12 +26,13 @@ export const apiRequest = async (endpoint, options = {}) => {
     const url = `${API_BASE_URL}/${endpoint}`;
     const isFormData = options.body instanceof FormData;
 
-    // AQUI JÁ ESTÁ CORRETO: Ele pega o 'empresaId' das opções e coloca no header.
+    // Configura a requisição, passando o empresaId para getDefaultHeaders
     const config = {
         headers: getDefaultHeaders(isFormData, options.empresaId),
         ...options
     };
 
+    // Lógica para simular PUT/DELETE com POST para suportar FormData
     if (isFormData && (options.method === 'PUT' || options.method === 'DELETE')) {
         config.method = 'POST';
         config.headers['X-HTTP-Method-Override'] = options.method;
@@ -43,11 +48,13 @@ export const apiRequest = async (endpoint, options = {}) => {
         if (response.headers.get('content-type')?.includes('application/json')) {
             const data = await response.json();
             if (!response.ok) {
+                // Lança o erro do backend se a resposta for JSON e não for ok
                 throw new Error(data.error || `Erro HTTP: ${response.status}`);
             }
             return data;
         }
 
+        // Trata respostas não-JSON (como 204 No Content ou sucesso simples)
         if (!response.ok) {
             throw new Error(`Erro HTTP: ${response.status}`);
         }
@@ -60,6 +67,9 @@ export const apiRequest = async (endpoint, options = {}) => {
     }
 };
 
+/**
+ * Objeto utilitário para simplificar as chamadas HTTP (GET, POST, PUT, DELETE)
+ */
 export const api = {
     get: (endpoint, id = null, options = {}) => {
         const url = id ? `${endpoint}?id=${id}` : endpoint;
@@ -96,23 +106,23 @@ export const api = {
 
 
 // ========================================================================
-// INÍCIO DAS CORREÇÕES PRINCIPAIS
-// O padrão foi replicado para todas as entidades para consistência.
+// FUNÇÕES ESPECÍFICAS PARA CADA ENTIDADE (GARANTIA DE CONSISTÊNCIA MULTI-TENANT)
 // ========================================================================
 
 /**
- * Funções específicas para cada entidade
+ * Assuntos API
  */
 export const assuntosAPI = {
     listar: (params = {}) => api.get('assuntos.php', null, { empresaId: params.empresaId }),
     buscar: (id, params = {}) => api.get('assuntos.php', id, { empresaId: params.empresaId }),
-    // CORREÇÃO: Extrai 'empresa_id' de 'data' e passa como 'empresaId' nas opções.
     criar: (data) => api.post('assuntos.php', data, { empresaId: data.empresa_id }),
     atualizar: (id, data) => api.put('assuntos.php', id, data, { empresaId: data.empresa_id }),
-    // CORREÇÃO: 'excluir' agora aceita 'empresaId' diretamente.
     excluir: (id, empresaId) => api.delete('assuntos.php', id, { empresaId })
 };
 
+/**
+ * Clientes API
+ */
 export const clientesAPI = {
     listar: (params = {}) => api.get('clientes.php', null, { empresaId: params.empresaId }),
     buscar: (id, params = {}) => api.get('clientes.php', id, { empresaId: params.empresaId }),
@@ -121,6 +131,9 @@ export const clientesAPI = {
     excluir: (id, empresaId) => api.delete('clientes.php', id, { empresaId })
 };
 
+/**
+ * Segmentos API
+ */
 export const segmentosAPI = {
     listar: (params = {}) => api.get('segmentos.php', null, { empresaId: params.empresaId }),
     buscar: (id, params = {}) => api.get('segmentos.php', id, { empresaId: params.empresaId }),
@@ -129,6 +142,9 @@ export const segmentosAPI = {
     excluir: (id, empresaId) => api.delete('segmentos.php', id, { empresaId })
 };
 
+/**
+ * Usuários API
+ */
 export const usuariosAPI = {
     listar: (params = {}) => api.get('usuarios.php', null, { empresaId: params.empresaId }),
     buscar: (id, params = {}) => api.get('usuarios.php', id, { empresaId: params.empresaId }),
@@ -137,6 +153,9 @@ export const usuariosAPI = {
     excluir: (id, empresaId) => api.delete('usuarios.php', id, { empresaId })
 };
 
+/**
+ * Equipamentos API
+ */
 export const equipamentosAPI = {
     listar: (params = {}) => api.get('equipamentos.php', null, { empresaId: params.empresaId }),
     buscar: (id, params = {}) => api.get('equipamentos.php', id, { empresaId: params.empresaId }),
@@ -145,34 +164,35 @@ export const equipamentosAPI = {
     excluir: (id, empresaId) => api.delete('equipamentos.php', id, { empresaId })
 };
 
-// --- FOCO PRINCIPAL AQUI ---
+/**
+ * Atendimentos API
+ */
 export const atendimentosAPI = {
     listar: (params = {}) => api.get('atendimentos.php', null, { empresaId: params.empresaId }),
     buscar: (id, params = {}) => api.get('atendimentos.php', id, { empresaId: params.empresaId }),
-
-    // Pega o 'empresa_id' que está dentro do objeto 'data' e o passa para as opções da requisição.
     criar: (data) => api.post('atendimentos.php', data, { empresaId: data.empresa_id }),
-
-    // O mesmo para atualizar.
     atualizar: (id, data) => api.put('atendimentos.php', id, data, { empresaId: data.empresa_id }),
-
-    // A função de excluir precisa receber o 'empresaId' como um argumento separado.
     excluir: (id, empresaId) => api.delete('atendimentos.php', id, { empresaId })
 };
-// --- FIM DO FOCO ---
 
+/**
+ * Dashboard API (Foco principal da correção inicial)
+ */
 export const dashboardAPI = {
     obterDados: (params = {}) => api.get('dashboard.php', null, { empresaId: params.empresaId })
 };
 
 export const empresasAPI = {
-    listar: () => api.get('empresas.php'),
+    listar: () => api.get('empresas.php'), // Não requer empresaId para listar todas
     buscar: (id) => api.get('empresas.php', id),
     criar: (data) => api.post('empresas.php', data),
     atualizar: (id, data) => api.put('empresas.php', id, data),
     excluir: (id) => api.delete('empresas.php', id)
 };
 
+/**
+ * Orçamentos API
+ */
 export const orcamentosAPI = {
     listar: (params = {}) => api.get('orcamentos.php', null, { empresaId: params.empresaId }),
     buscar: (id, params = {}) => api.get('orcamentos.php', id, { empresaId: params.empresaId }),

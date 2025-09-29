@@ -32,12 +32,10 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import FormularioOrcamento from './FormularioOrcamento';
 import toast from 'react-hot-toast';
 import ToggleSwitch from '../../components/ToggleSwitch';
-import { pdf } from '@react-pdf/renderer';
-import LayoutDeltaPdf from '../../components/pdf/LayoutDeltaPdf';
 import './Orcamentos.css';
 
 // Componente do Modal de Visualização
-const ViewModal = ({ orcamento, loading, onClose, handleEdit, getUsuarioNome, getEmpresaNome, clientes, empresas }) => {
+const ViewModal = ({ orcamento, loading, onClose, handleEdit, getUsuarioNome, getEmpresaNome }) => {
     const [activeTab, setActiveTab] = useState('details');
 
     if (!orcamento) return null;
@@ -80,30 +78,19 @@ const ViewModal = ({ orcamento, loading, onClose, handleEdit, getUsuarioNome, ge
         return null;
     };
 
-    const handlePrint = async () => {
-        try {
-            // Gera o PDF em memória
-            const blob = await pdf(
-                <LayoutDeltaPdf
-                    orcamento={orcamento}
-                    empresa={empresas.find(e => e.id === orcamento.empresa_id)}
-                    cliente={clientes.find(c => c.id === orcamento.cliente_id)}
-                />
-            ).toBlob();
-
-            // Cria uma URL temporária do PDF
-            const pdfURL = URL.createObjectURL(blob);
-
-            // Abre em nova aba e dispara impressão
-            const printWindow = window.open(pdfURL);
-            if (printWindow) {
-                printWindow.onload = () => {
-                    printWindow.print();
-                };
-            }
-        } catch (err) {
-            console.error("Erro ao gerar PDF:", err);
+    const handlePrint = () => {
+        const content = document.getElementById('modal-para-imprimir');
+        if (!content || loading) {
+            console.error('Conteúdo para impressão não está pronto.');
+            return;
         }
+        // Sua lógica de impressão...
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`<html><head><title>Orçamento #${orcamento.numero_orcamento}</title></head><body>${content.innerHTML}</body></html>`);
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
     };
 
     return (
@@ -267,14 +254,14 @@ const OrcamentosRefatorado = () => {
     const { message, showSuccess, showError } = useMessage();
 
     // Opções de status
-    const statusOptions = useMemo(() => [
+    const statusOptions = [
         { value: 'Rascunho', label: 'Rascunho', icon: Edit },
         { value: 'Pendente', label: 'Pendente', icon: Clock },
         { value: 'Aguardando Aprovacao', label: 'Aguardando Aprovação', icon: Send },
         { value: 'Aprovado', label: 'Aprovado', icon: CheckCircle },
         { value: 'Rejeitado', label: 'Rejeitado', icon: XCircle },
         { value: 'Cancelado', label: 'Cancelado', icon: AlertTriangle }
-    ], []);
+    ];
 
     // Funções de formatação
     const formatCurrency = useCallback((value) => {
@@ -885,6 +872,7 @@ const OrcamentosRefatorado = () => {
                 </div>
             )}
 
+            {/* Modal de Visualização */}
             {showViewModal && (
                 <ViewModal
                     orcamento={viewingOrcamento}
@@ -893,8 +881,6 @@ const OrcamentosRefatorado = () => {
                     handleEdit={handleEdit}
                     getEmpresaNome={getEmpresaNome}
                     getUsuarioNome={getUsuarioNome}
-                    clientes={clientes}
-                    empresas={empresas}
                 />
             )}
         </div>

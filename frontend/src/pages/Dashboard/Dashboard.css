@@ -421,19 +421,34 @@
     color: #e53935;
 }
 
-/* --- RESPONSIVIDADE --- */
+/* --- RESPONSIVIDADE (AJUSTADA) --- */
 @media (max-width: 768px) {
     .dashboard-header {
         flex-direction: column;
         align-items: flex-start;
     }
 
-    .kpi-cards-grid {
+    /* Força os KPIs a empilharem em telas pequenas */
+    .kpi-grid {
         grid-template-columns: 1fr;
     }
 
-    .charts-grid {
+    /* Força os gráficos e tabelas a empilharem */
+    .dashboard-grid {
         grid-template-columns: 1fr;
+    }
+
+    .dashboard-card-wide {
+        /* Garante que o card de Atendimentos Recentes ocupe 100% da tela */
+        grid-column: 1 / -1;
+    }
+
+    .dashboard-table td {
+        font-size: 12px;
+    }
+
+    .description-cell {
+        max-width: 150px;
     }
 }
 

@@ -1,73 +1,73 @@
-.toggle-switch {
+.toggle-switch-container {
+    display: flex;
+    align-items: center;
+}
+
+.toggle-switch-checkbox {
+    display: none;
+}
+
+.toggle-switch-label {
+    display: block;
+    overflow: hidden;
+    cursor: pointer;
+    width: 48px;
+    height: 24px;
+    background-color: #eb4d4d;
+    border-radius: 20px;
     position: relative;
-    display: inline-block;
-    width: 60px;
-    height: 34px;
+    transition: background-color 0.2s ease-in;
 }
 
-.toggle-checkbox {
-    opacity: 0;
-    width: 0;
-    height: 0;
+.toggle-switch-inner {
+    display: block;
+    width: 200%;
+    margin-left: -100%;
+    transition: margin 0.2s ease-in 0s;
 }
 
-.toggle-label {
+.toggle-switch-inner:before,
+.toggle-switch-inner:after {
+    display: block;
+    float: left;
+    width: 50%;
+    height: 24px;
+    padding: 0;
+    line-height: 24px;
+    font-size: 14px;
+    color: white;
+    font-weight: bold;
+    box-sizing: border-box;
+}
+
+.toggle-switch-switch {
+    display: block;
+    width: 18px;
+    height: 18px;
+    margin: 3px;
+    background: #FFFFFF;
     position: absolute;
-    cursor: pointer;
     top: 0;
-    left: 0;
-    right: 0;
     bottom: 0;
-    background-color: #ccc;
-    transition: .4s;
-    border-radius: 34px;
+    right: 26px;
+    border-radius: 20px;
+    transition: all 0.2s ease-in 0s;
 }
 
-.toggle-label:after {
-    position: absolute;
-    content: "";
-    height: 26px;
-    width: 26px;
-    left: 4px;
-    bottom: 4px;
-    background-color: white;
-    transition: .4s;
-    border-radius: 50%;
+.toggle-switch-checkbox:checked+.toggle-switch-label {
+    background-color: #065574;
 }
 
-.toggle-checkbox:checked + .toggle-label {
-    background-color: #2196F3;
+.toggle-switch-checkbox:checked+.toggle-switch-label .toggle-switch-inner {
+    margin-left: 0;
 }
 
-.toggle-checkbox:checked + .toggle-label:after {
-    transform: translateX(26px);
+.toggle-switch-checkbox:checked+.toggle-switch-label .toggle-switch-switch {
+    right: 3px;
 }
 
-.toggle-text {
-    margin-right: 10px;
-    vertical-align: middle;
-}
-
-.toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: .4s;
-    border-radius: 34px;
-}
-
-.toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 26px;
-    width: 26px;
-    left: 4px;
-    bottom: 4px;
-    background-color: white;
-    transition: .4s;
-    border-radius: 50%;
+.toggle-switch-text-label {
+    margin-left: 8px;
+    font-size: 14px;
+    color: #333;
 }
