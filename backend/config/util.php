@@ -20,7 +20,6 @@ if (!function_exists('responderErro')) {
         http_response_code($status);
         echo json_encode([
             "success" => false,
-            "error" => $mensagem,
             "message" => $mensagem
         ]);
         exit();

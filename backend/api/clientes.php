@@ -30,6 +30,11 @@ require_once __DIR__ . "/../config/db.php";
 require_once __DIR__ . "/../config/util.php";
 
 try {
+    $conn = getConnection(); // Adiciona a inicialização da conexão
+    if (!$conn) {
+        throw new Exception("Falha ao obter conexão com o banco de dados.");
+    }
+
     // Obter e validar empresa_id
     $empresa_id = obterEmpresaId();
     if (!$empresa_id && DEVELOPMENT_MODE) {
@@ -77,36 +82,32 @@ switch ($method) {
 function handleGet($conn, $empresa_id, $id) {
     try {
         if ($id) {
-            // Buscar cliente específico
+            // Buscar cliente específico com PDO
             $stmt = $conn->prepare("
                 SELECT c.id, c.nome, c.email, c.telefone, c.cpf_cnpj, c.logradouro, c.cidade, c.estado, c.cep, c.observacoes, c.ativo, c.criado_em, c.atualizado_em,
-                s.nome AS nome_segmento, s.id AS segmento_id
+                       GROUP_CONCAT(cs.segmento_id) AS segmentos_ids
                 FROM clientes c
-                LEFT JOIN segmentos s ON c.segmento_id = s.id
+                LEFT JOIN cliente_segmentos cs ON c.id = cs.cliente_id
                 WHERE c.id = ? AND c.empresa_id = ? AND c.removido_em IS NULL
+                GROUP BY c.id
             ");
-            if (!$stmt) {
-                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-            }
-            $stmt->bind_param("ii", $id, $empresa_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $cliente = $result->fetch_assoc();
+            $stmt->execute([$id, $empresa_id]);
+            $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$cliente) {
                 responderErro('Cliente não encontrado', 404);
             }
 
-            // Garante que o status seja retornado como um número
             $cliente['ativo'] = (int)$cliente['ativo'];
+            $cliente['segmentos_ids'] = $cliente['segmentos_ids'] ? array_map('intval', explode(',', $cliente['segmentos_ids'])) : [];
             
             responderSucesso('Cliente encontrado', $cliente);
             
         } else {
-            // Listar todos os clientes, com opção de filtrar por status
+            // Listar todos os clientes com PDO
             $filtro_status = isset($_GET['status']) && $_GET['status'] === 'ativo' ? " AND c.ativo = 1" : "";
 
-            $stmt = $conn->prepare("
+            $sql = "
                 SELECT c.id, c.nome, c.email, c.telefone, c.cpf_cnpj, c.logradouro, c.cidade, c.estado, c.cep, c.observacoes, c.ativo, c.criado_em, c.atualizado_em,
                     GROUP_CONCAT(cs.segmento_id) AS segmentos_ids
                 FROM clientes c
@@ -114,23 +115,15 @@ function handleGet($conn, $empresa_id, $id) {
                 WHERE c.empresa_id = ? AND c.removido_em IS NULL {$filtro_status}
                 GROUP BY c.id
                 ORDER BY c.id DESC
-            ");
-            if (!$stmt) {
-                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-            }
-            $stmt->bind_param("i", $empresa_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $clientes = $result->fetch_all(MYSQLI_ASSOC);
+            ";
+            
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$empresa_id]);
+            $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // Ajustar o campo segmentos_ids para ser array e ativo para int
             foreach ($clientes as &$cliente) {
                 $cliente['ativo'] = (int)$cliente['ativo'];
-                if ($cliente['segmentos_ids']) {
-                    $cliente['segmentos_ids'] = array_map('intval', explode(',', $cliente['segmentos_ids']));
-                } else {
-                    $cliente['segmentos_ids'] = [];
-                }
+                $cliente['segmentos_ids'] = $cliente['segmentos_ids'] ? array_map('intval', explode(',', $cliente['segmentos_ids'])) : [];
             }
             
             responderSucesso('Clientes listados com sucesso', $clientes);
@@ -149,7 +142,6 @@ function handlePost($conn, $empresa_id) {
     try {
         $input = json_decode(file_get_contents('php://input'), true);
 
-        // Validar dados obrigatórios
         if (!$input || !isset($input['nome']) || empty(trim($input['nome']))) {
             responderErro('Nome do cliente é obrigatório', 400);
         }
@@ -157,108 +149,66 @@ function handlePost($conn, $empresa_id) {
         $nome = trim($input['nome']);
         $email = isset($input['email']) ? trim($input['email']) : null;
         $telefone = isset($input['telefone']) ? trim($input['telefone']) : null;
-        $cpf_cnpj = isset($input['cpf_cnpj']) ? trim($input['cpf_cnpj']) : null;
-        $logradouro = isset($input['logradouro']) ? trim($input['logradouro']) : null;
-        $cidade = isset($input['cidade']) ? trim($input['cidade']) : null;
-        $estado = isset($input['estado']) ? trim($input['estado']) : null;
-        $cep = isset($input['cep']) ? trim($input['cep']) : null;
-        $segmentos_ids = isset($input['segmentos_ids']) ? $input['segmentos_ids'] : [];
-        $observacoes = isset($input['observacoes']) ? trim($input['observacoes']) : null;
+        $cpf_cnpj = isset($input['cpf_cnpj']) ? preg_replace('/\D/', '', trim($input['cpf_cnpj'])) : null;
+        $logradouro = $input['logradouro'] ?? null;
+        $cidade = $input['cidade'] ?? null;
+        $estado = $input['estado'] ?? null;
+        $cep = isset($input['cep']) ? preg_replace('/\D/', '', $input['cep']) : null;
+        $segmentos_ids = $input['segmentos_ids'] ?? [];
+        $observacoes = $input['observacoes'] ?? null;
         $ativo = isset($input['ativo']) ? (int)$input['ativo'] : 1;
 
-        // Validar CPF/CNPJ se fornecido
+        if ($cpf_cnpj && !validarDocumento($cpf_cnpj)) {
+            responderErro('CPF/CNPJ inválido', 400);
+        }
+
         if ($cpf_cnpj) {
-            $cpf_cnpj_limpo = preg_replace('/\D/', '', $cpf_cnpj);
-            if (!validarDocumento($cpf_cnpj_limpo)) {
-                if (strlen($cpf_cnpj_limpo) == 11) {
-                    responderErro('CPF inválido', 400);
-                } else if (strlen($cpf_cnpj_limpo) == 14) {
-                    responderErro('CNPJ inválido', 400);
-                } else {
-                    responderErro('CPF/CNPJ inválido', 400);
-                }
+            $stmt = $conn->prepare("SELECT id FROM clientes WHERE cpf_cnpj = ? AND empresa_id = ? AND removido_em IS NULL");
+            $stmt->execute([$cpf_cnpj, $empresa_id]);
+            if ($stmt->fetch()) {
+                responderErro('CPF/CNPJ já cadastrado para outro cliente', 409);
             }
         }
 
-        // Verificar se CPF/CNPJ já existe (se fornecido)
-        if ($cpf_cnpj) {
-            $cpf_cnpj_limpo = preg_replace('/\D/', '', $cpf_cnpj);
-            $stmt = $conn->prepare("
-                SELECT id FROM clientes 
-                WHERE cpf_cnpj = ? AND empresa_id = ? AND removido_em IS NULL
-            ");
-            if (!$stmt) {
-                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-            }
-            $stmt->bind_param("si", $cpf_cnpj_limpo, $empresa_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            if ($result->num_rows > 0) {
-                if (strlen($cpf_cnpj_limpo) == 11) {
-                    responderErro('CPF já cadastrado para outro cliente', 409);
-                } else {
-                    responderErro('CNPJ já cadastrado para outro cliente', 409);
-                }
-            }
-        }
+        $conn->beginTransaction();
 
-        // Limpar CPF/CNPJ para armazenar apenas números
-        if ($cpf_cnpj) {
-            $cpf_cnpj = preg_replace('/\D/', '', $cpf_cnpj);
-        }
-
-        // Inserir novo cliente
         $stmt = $conn->prepare("
             INSERT INTO clientes (nome, email, telefone, cpf_cnpj, logradouro, cidade, estado, cep, observacoes, ativo, empresa_id) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        if (!$stmt) {
-            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-        }
+        
+        $params = [$nome, $email, $telefone, $cpf_cnpj, $logradouro, $cidade, $estado, $cep, $observacoes, $ativo, $empresa_id];
 
-        $stmt->bind_param("sssssssssis", 
-            $nome, $email, $telefone, $cpf_cnpj, $logradouro, $cidade, $estado, $cep, $observacoes, $ativo, $empresa_id
-        );
+        if ($stmt->execute($params)) {
+            $lastId = $conn->lastInsertId();
 
-        if ($stmt->execute()) {
-            $lastId = $conn->insert_id;
-
-            // Inserir segmentos na tabela intermediária (cliente_segmentos)
             if (!empty($segmentos_ids)) {
                 $stmtSegmento = $conn->prepare("INSERT INTO cliente_segmentos (cliente_id, segmento_id) VALUES (?, ?)");
-                if (!$stmtSegmento) {
-                    responderErro("Erro na preparação da consulta de segmentos: " . $conn->error, 500);
-                }
                 foreach ($segmentos_ids as $segmento_id) {
-                    $segmento_id = (int)$segmento_id;
-                    $stmtSegmento->bind_param("ii", $lastId, $segmento_id);
-                    $stmtSegmento->execute();
+                    $stmtSegmento->execute([$lastId, (int)$segmento_id]);
                 }
             }
 
-            // Buscar o cliente criado para retornar
-            $stmt = $conn->prepare("
-                SELECT id, nome, email, telefone, cpf_cnpj, logradouro, cidade, estado, cep, observacoes, ativo, criado_em, atualizado_em
-                FROM clientes 
-                WHERE id = ?
-            ");
-            if (!$stmt) {
-                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-            }
-            $stmt->bind_param("i", $lastId);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $cliente = $result->fetch_assoc();
+            $conn->commit();
+
+            $stmt = $conn->prepare("SELECT * FROM clientes WHERE id = ?");
+            $stmt->execute([$lastId]);
+            $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
             $cliente['ativo'] = (int)$cliente['ativo'];
 
             responderSucesso('Cliente criado com sucesso', $cliente, 201);
         } else {
-            responderErro('Erro ao criar cliente: ' . $stmt->error, 500);
+            $conn->rollBack();
+            $errorInfo = $stmt->errorInfo();
+            responderErro('Erro ao criar cliente: ' . ($errorInfo[2] ?? 'Erro desconhecido'), 500);
         }
 
     } catch (Exception $e) {
+        if ($conn->inTransaction()) {
+            $conn->rollBack();
+        }
         error_log("Erro ao criar cliente: " . $e->getMessage());
-        responderErro('Dados inválidos: ' . $e->getMessage(), 400);
+        responderErro('Dados inválidos ou erro interno: ' . $e->getMessage(), 400);
     }
 }
 
@@ -272,126 +222,84 @@ function handlePut($conn, $empresa_id) {
         if (!isset($input['id'])) {
             responderErro('ID do cliente é obrigatório', 400);
         }
-        $id = $input['id'];
+        $id = (int)$input['id'];
 
-        // Verificar se o cliente existe
-        $stmt = $conn->prepare("
-            SELECT id FROM clientes 
-            WHERE id = ? AND empresa_id = ? AND removido_em IS NULL
-        ");
-        if (!$stmt) {
-            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-        }
-        $stmt->bind_param("ii", $id, $empresa_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        $conn->beginTransaction();
 
-        if ($result->num_rows === 0) {
+        $stmt = $conn->prepare("SELECT id FROM clientes WHERE id = ? AND empresa_id = ? AND removido_em IS NULL");
+        $stmt->execute([$id, $empresa_id]);
+        if (!$stmt->fetch()) {
+            $conn->rollBack();
             responderErro('Cliente não encontrado', 404);
         }
 
-        // Preparar campos para atualização
         $fields = [];
         $params = [];
-        $types = '';
 
-        $allowed_fields = ['nome', 'email', 'telefone', 'cpf_cnpj', 'logradouro', 'cidade', 'estado', 'cep', 'segmento_id', 'observacoes', 'ativo'];
+        $allowed_fields = ['nome', 'email', 'telefone', 'cpf_cnpj', 'logradouro', 'cidade', 'estado', 'cep', 'observacoes', 'ativo'];
 
-        foreach ($input as $key => $value) {
-            if (in_array($key, $allowed_fields)) {
-                if (in_array($key, ['nome']) && empty(trim($value))) {
+        foreach ($allowed_fields as $field) {
+            if (isset($input[$field])) {
+                $value = trim($input[$field]);
+                
+                if ($field === 'nome' && empty($value)) {
                     responderErro('Nome não pode ser vazio', 400);
                 }
 
-                if ($key === 'cpf_cnpj' && $value !== null) {
-                    $cpf_cnpj_limpo = preg_replace('/\D/', '', $value);
-                    if (!validarDocumento($cpf_cnpj_limpo)) {
+                if ($field === 'cpf_cnpj') {
+                    $value = preg_replace('/\D/', '', $value);
+                    if (!empty($value) && !validarDocumento($value)) {
                         responderErro('CPF/CNPJ inválido', 400);
                     }
-                    $value = $cpf_cnpj_limpo;
 
-                    // Verificar duplicidade de CPF/CNPJ para outro cliente
-                    $stmtCheck = $conn->prepare("
-                        SELECT id FROM clientes WHERE cpf_cnpj = ? AND empresa_id = ? AND id != ? AND removido_em IS NULL
-                    ");
-                    if (!$stmtCheck) {
-                        responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-                    }
-                    $stmtCheck->bind_param("sii", $value, $empresa_id, $id);
-                    $stmtCheck->execute();
-                    $resCheck = $stmtCheck->get_result();
-                    if ($resCheck->num_rows > 0) {
+                    $stmtCheck = $conn->prepare("SELECT id FROM clientes WHERE cpf_cnpj = ? AND empresa_id = ? AND id != ? AND removido_em IS NULL");
+                    $stmtCheck->execute([$value, $empresa_id, $id]);
+                    if ($stmtCheck->fetch()) {
                         responderErro('CPF/CNPJ já cadastrado para outro cliente', 409);
                     }
                 }
 
-                if ($key === 'ativo') {
-                    $value = (int)$value;
-                }
-
-                // Não atualizar segmento_id diretamente (assumindo segmento múltiplo), removemos este campo aqui
-                if ($key === 'segmento_id') {
-                    continue;
-                }
-
-                $fields[] = "$key = ?";
+                $fields[] = "`$field` = ?";
                 $params[] = $value;
-                $types .= 's';
             }
         }
 
         if (empty($fields)) {
+            $conn->rollBack();
             responderErro('Nenhum campo válido para atualizar', 400);
         }
 
-        // Construir SQL de update
-        $sql = "UPDATE clientes SET " . implode(', ', $fields) . ", atualizado_em = NOW() WHERE id = ? AND empresa_id = ?";
-        $stmt = $conn->prepare($sql);
-        if (!$stmt) {
-            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-        }
-
-        // Adicionar tipos e parâmetros do WHERE
-        $types .= 'ii';
+        $fields[] = "atualizado_em = NOW()";
+        $sql = "UPDATE clientes SET " . implode(', ', $fields) . " WHERE id = ? AND empresa_id = ?";
         $params[] = $id;
         $params[] = $empresa_id;
 
-        // Preparar bind_param com call_user_func_array
-        $bind_names[] = $types;
-        for ($i=0; $i<count($params); $i++) {
-            $bind_names[] = &$params[$i];
-        }
-        call_user_func_array([$stmt, 'bind_param'], $bind_names);
-
-        if (!$stmt->execute()) {
-            responderErro('Erro ao atualizar cliente: ' . $stmt->error, 500);
+        $stmt = $conn->prepare($sql);
+        if (!$stmt->execute($params)) {
+            $conn->rollBack();
+            $errorInfo = $stmt->errorInfo();
+            responderErro('Erro ao atualizar cliente: ' . ($errorInfo[2] ?? 'Erro desconhecido'), 500);
         }
 
-        // Atualizar segmentos (tabela intermediária)
         if (isset($input['segmentos_ids']) && is_array($input['segmentos_ids'])) {
-            // Apagar segmentos antigos
             $stmtDel = $conn->prepare("DELETE FROM cliente_segmentos WHERE cliente_id = ?");
-            if (!$stmtDel) {
-                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-            }
-            $stmtDel->bind_param("i", $id);
-            $stmtDel->execute();
+            $stmtDel->execute([$id]);
 
-            // Inserir novos segmentos
             $stmtIns = $conn->prepare("INSERT INTO cliente_segmentos (cliente_id, segmento_id) VALUES (?, ?)");
-            if (!$stmtIns) {
-                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-            }
             foreach ($input['segmentos_ids'] as $segmento_id) {
-                $segmento_id = (int)$segmento_id;
-                $stmtIns->bind_param("ii", $id, $segmento_id);
-                $stmtIns->execute();
+                if (!empty($segmento_id)) {
+                    $stmtIns->execute([$id, (int)$segmento_id]);
+                }
             }
         }
 
+        $conn->commit();
         responderSucesso('Cliente atualizado com sucesso');
 
     } catch (Exception $e) {
+        if ($conn->inTransaction()) {
+            $conn->rollBack();
+        }
         error_log("Erro ao atualizar cliente: " . $e->getMessage());
         responderErro('Erro ao atualizar cliente: ' . $e->getMessage(), 500);
     }
@@ -406,37 +314,29 @@ function handleDelete($conn, $empresa_id, $id) {
             responderErro('ID do cliente não fornecido na URL.', 400);
         }
 
-        // Verificar se cliente existe
-        $stmt = $conn->prepare("
-            SELECT id FROM clientes 
-            WHERE id = ? AND empresa_id = ? AND removido_em IS NULL
-        ");
-        if (!$stmt) {
-            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-        }
-        $stmt->bind_param("ii", $id, $empresa_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        $conn->beginTransaction();
 
-        if ($result->num_rows === 0) {
+        $stmt = $conn->prepare("SELECT id FROM clientes WHERE id = ? AND empresa_id = ? AND removido_em IS NULL");
+        $stmt->execute([$id, $empresa_id]);
+        if (!$stmt->fetch()) {
+            $conn->rollBack();
             responderErro('Cliente não encontrado ou já removido', 404);
         }
 
-        // Soft delete - marcar removido_em
-        $stmt = $conn->prepare("
-            UPDATE clientes SET removido_em = NOW() WHERE id = ? AND empresa_id = ?
-        ");
-        if (!$stmt) {
-            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
-        }
-        $stmt->bind_param("ii", $id, $empresa_id);
-        if ($stmt->execute()) {
+        $stmt = $conn->prepare("UPDATE clientes SET removido_em = NOW() WHERE id = ? AND empresa_id = ?");
+        if ($stmt->execute([$id, $empresa_id])) {
+            $conn->commit();
             responderSucesso('Cliente removido com sucesso');
         } else {
-            responderErro('Erro ao remover cliente: ' . $stmt->error, 500);
+            $conn->rollBack();
+            $errorInfo = $stmt->errorInfo();
+            responderErro('Erro ao remover cliente: ' . ($errorInfo[2] ?? 'Erro desconhecido'), 500);
         }
 
     } catch (Exception $e) {
+        if ($conn->inTransaction()) {
+            $conn->rollBack();
+        }
         error_log("Erro ao remover cliente: " . $e->getMessage());
         responderErro('Erro ao remover cliente: ' . $e->getMessage(), 500);
     }
@@ -482,42 +382,34 @@ function validarCPF($cpf) {
  * Validar CNPJ
  */
 function validarCNPJ($cnpj) {
+    $cnpj = preg_replace('/[^0-9]/', '', (string) $cnpj);
+
+    // Valida tamanho
     if (strlen($cnpj) != 14) {
         return false;
     }
 
-    $tamanho = strlen($cnpj) - 2;
-    $numeros = substr($cnpj, 0, $tamanho);
-    $digitos = substr($cnpj, $tamanho);
-    $soma = 0;
-    $pos = $tamanho - 7;
-
-    for ($i = $tamanho; $i >= 1; $i--) {
-        $soma += $numeros[$tamanho - $i] * $pos--;
-        if ($pos < 2) {
-            $pos = 9;
-        }
-    }
-
-    $resultado = ($soma % 11) < 2 ? 0 : 11 - ($soma % 11);
-    if ($resultado != $digitos[0]) {
+    // Valida sequências invalidas
+    if (preg_match('/(\d)\1{13}/', $cnpj)) {
         return false;
     }
 
-    $tamanho += 1;
-    $numeros = substr($cnpj, 0, $tamanho);
-    $soma = 0;
-    $pos = $tamanho - 7;
-
-    for ($i = $tamanho; $i >= 1; $i--) {
-        $soma += $numeros[$tamanho - $i] * $pos--;
-        if ($pos < 2) {
-            $pos = 9;
-        }
+    // Valida dígitos verificadores
+    for ($i = 0, $j = 5, $soma = 0; $i < 12; $i++) {
+        $soma += $cnpj[$i] * $j;
+        $j = ($j == 2) ? 9 : $j - 1;
+    }
+    $resto = $soma % 11;
+    if ($cnpj[12] != ($resto < 2 ? 0 : 11 - $resto)) {
+        return false;
     }
 
-    $resultado = ($soma % 11) < 2 ? 0 : 11 - ($soma % 11);
-    if ($resultado != $digitos[1]) {
+    for ($i = 0, $j = 6, $soma = 0; $i < 13; $i++) {
+        $soma += $cnpj[$i] * $j;
+        $j = ($j == 2) ? 9 : $j - 1;
+    }
+    $resto = $soma % 11;
+    if ($cnpj[13] != ($resto < 2 ? 0 : 11 - $resto)) {
         return false;
     }
 
@@ -528,21 +420,24 @@ function validarCNPJ($cnpj) {
  * Função para obter empresa_id do cabeçalho HTTP
  */
 function obterEmpresaId() {
-    // A variável apache_request_headers() funciona para obter cabeçalhos
-    $headers = function_exists('apache_request_headers') ? apache_request_headers() : [];
-
-    $empresa_id = null;
-
-    if (!empty($headers)) {
-        foreach ($headers as $key => $value) {
-            if (strtolower($key) === 'x-empresa-id') {
-                $empresa_id = (int)$value;
-                break;
-            }
-        }
+    // Tenta obter cabeçalhos de múltiplas fontes para máxima compatibilidade
+    $headers = [];
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
     }
 
-    return $empresa_id;
+    // Normaliza as chaves para minúsculas
+    $headers = array_change_key_case($headers, CASE_LOWER);
+
+    if (isset($headers['x-empresa-id'])) {
+        return (int)$headers['x-empresa-id'];
+    }
+
+    if (isset($_SERVER['HTTP_X_EMPRESA_ID'])) {
+        return (int)$_SERVER['HTTP_X_EMPRESA_ID'];
+    }
+
+    return null;
 }
 ?>
 

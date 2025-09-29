@@ -14,7 +14,8 @@ define('DEVELOPMENT_MODE', true);
 
 // Definir cabeçalhos CORS
 header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Origin: http://localhost:3000");
+// Em produção, considere uma lista de origens permitidas em vez de '*'
+header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With, X-HTTP-Method-Override");
 header("Access-Control-Allow-Credentials: true");
@@ -29,15 +30,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once __DIR__ . "/../config/db.php";
 require_once __DIR__ . "/../config/util.php";
 
+// Inicialização da conexão
+$conn = null;
 try {
+    $conn = getConnection(); // <-- CORREÇÃO: Inicializa a conexão
+    if (!$conn) {
+        throw new Exception("Falha ao obter conexão com o banco de dados.");
+    }
+
     $empresa_id = obterEmpresaId();
     if (!$empresa_id && DEVELOPMENT_MODE) {
         $empresa_id = 1;
     }
 
-    if (!$empresa_id) {
-        responderErro('ID da empresa não fornecido no cabeçalho X-Empresa-ID', 400);
-    }
+    // A verificação de empresa_id pode não ser necessária para todos os endpoints de usuário
+    // if (!$empresa_id) {
+    //     responderErro('ID da empresa não fornecido no cabeçalho X-Empresa-ID', 400);
+    // }
 
 } catch (Exception $e) {
     error_log("Erro na inicialização da API de usuários: " . $e->getMessage());
@@ -86,9 +95,8 @@ function handleGet($conn, $empresa_id, $id) {
                 FROM usuarios
                 WHERE id = ? AND removido_em IS NULL
             ");
-            $stmt->bind_param("i", $id);
-            $stmt->execute();
-            $usuario = $stmt->get_result()->fetch_assoc();
+            $stmt->execute([$id]);
+            $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($usuario) {
                 $usuario['bloqueado'] = (int)$usuario['bloqueado'];
@@ -105,12 +113,11 @@ function handleGet($conn, $empresa_id, $id) {
                 ORDER BY nome ASC
             ");
             $stmt->execute();
-            $result = $stmt->get_result();
-            $usuarios = [];
+            $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            while ($row = $result->fetch_assoc()) {
-                $row['bloqueado'] = (int)$row['bloqueado'];
-                $usuarios[] = $row;
+            // Assegurar que 'bloqueado' seja um inteiro para consistência no frontend
+            foreach ($usuarios as &$usuario) {
+                $usuario['bloqueado'] = (int)$usuario['bloqueado'];
             }
 
             responderSucesso('Usuários listados com sucesso', $usuarios);
@@ -147,17 +154,20 @@ function handlePost($conn, $empresa_id) {
 
         if ($cpf && strlen($cpf) !== 11) responderErro('CPF inválido', 400);
 
-        // Duplicidade
+        // Duplicidade de Email
         $stmt = $conn->prepare("SELECT id FROM usuarios WHERE email = ? AND removido_em IS NULL");
-        $stmt->bind_param("s", $email);
-        $stmt->execute();
-        if ($stmt->get_result()->num_rows > 0) responderErro('Já existe um usuário com este email', 409);
+        $stmt->execute([$email]);
+        if ($stmt->fetch()) {
+            responderErro('Já existe um usuário com este email', 409);
+        }
 
+        // Duplicidade de CPF
         if ($cpf) {
             $stmt = $conn->prepare("SELECT id FROM usuarios WHERE cpf = ? AND removido_em IS NULL");
-            $stmt->bind_param("s", $cpf);
-            $stmt->execute();
-            if ($stmt->get_result()->num_rows > 0) responderErro('CPF já cadastrado', 409);
+            $stmt->execute([$cpf]);
+            if ($stmt->fetch()) {
+                responderErro('CPF já cadastrado', 409);
+            }
         }
 
         $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
@@ -165,12 +175,14 @@ function handlePost($conn, $empresa_id) {
             INSERT INTO usuarios (nome, cpf, email, senha, telefone, bloqueado, perfil, foto)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->bind_param("sssssiis", $nome, $cpf, $email, $senha_hash, $telefone, $bloqueado, $perfil, $fotoPath);
+        
+        $params = [$nome, $cpf, $email, $senha_hash, $telefone, $bloqueado, $perfil, $fotoPath];
 
-        if ($stmt->execute()) {
-            responderSucesso('Usuário criado com sucesso', ['id' => $conn->insert_id], 201);
+        if ($stmt->execute($params)) {
+            responderSucesso('Usuário criado com sucesso', ['id' => $conn->lastInsertId()], 201);
         } else {
-            responderErro('Erro ao criar usuário: ' . $stmt->error, 500);
+            $errorInfo = $stmt->errorInfo();
+            responderErro('Erro ao criar usuário: ' . ($errorInfo[2] ?? 'Erro desconhecido'), 500);
         }
 
     } catch (Exception $e) {
@@ -178,10 +190,9 @@ function handlePost($conn, $empresa_id) {
     }
 }
 
-/**
- * Atualizar usuário
- */
 function handlePut($conn, $empresa_id, $id) {
+    // Como os dados vêm de um FormData, eles estarão em $_POST
+    // e não em um raw body. A lógica de leitura está ok.
     try {
         if (!$id) responderErro('ID do usuário não fornecido', 400);
 
@@ -201,11 +212,10 @@ function handlePut($conn, $empresa_id, $id) {
 
         if ($cpf && strlen($cpf) !== 11) responderErro('CPF inválido', 400);
 
-        // Verifica usuário existente
+        // Verifica usuário existente (PDO)
         $stmt = $conn->prepare("SELECT foto FROM usuarios WHERE id = ? AND removido_em IS NULL");
-        $stmt->bind_param("i", $id);
-        $stmt->execute();
-        $existing = $stmt->get_result()->fetch_assoc();
+        $stmt->execute([$id]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$existing) responderErro('Usuário não encontrado', 404);
 
         $oldFotoPath = $existing['foto'];
@@ -219,45 +229,50 @@ function handlePut($conn, $empresa_id, $id) {
             $fotoPath = salvarFoto($_FILES['foto']);
         }
 
-        // Monta query
-        $query = "UPDATE usuarios SET nome=?, email=?, telefone=?, cpf=?, perfil=?, bloqueado=?, foto=?, atualizado_em=NOW()";
-        $params = "ssssiis";
-        $data = [$nome, $email, $telefone, $cpf, $perfil, $bloqueado, $fotoPath];
+        // Monta query (PDO)
+        $query_parts = [];
+        $params = [];
+
+        $query_parts[] = "nome=?"; $params[] = $nome;
+        $query_parts[] = "email=?"; $params[] = $email;
+        $query_parts[] = "telefone=?"; $params[] = $telefone;
+        $query_parts[] = "cpf=?"; $params[] = $cpf;
+        $query_parts[] = "perfil=?"; $params[] = $perfil;
+        $query_parts[] = "bloqueado=?"; $params[] = $bloqueado;
+        $query_parts[] = "foto=?"; $params[] = $fotoPath;
+        $query_parts[] = "atualizado_em=NOW()";
 
         if ($senha) {
             $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
-            $query .= ", senha=?";
-            $params .= "s";
-            $data[] = $senha_hash;
+            $query_parts[] = "senha=?";
+            $params[] = $senha_hash;
         }
 
-        $query .= " WHERE id=?";
-        $params .= "i";
-        $data[] = $id;
+        $params[] = $id; // Adiciona o ID para o WHERE
 
+        $query = "UPDATE usuarios SET " . implode(", ", $query_parts) . " WHERE id=?";
+        
         $stmt = $conn->prepare($query);
-        $stmt->bind_param($params, ...$data);
 
-        if ($stmt->execute()) {
-            // Busca o usuário atualizado para retornar na resposta
+        if ($stmt->execute($params)) {
+            // Busca o usuário atualizado para retornar na resposta (PDO)
             $stmt = $conn->prepare("
                 SELECT id, nome, cpf, email, telefone, bloqueado, perfil, foto, criado_em, atualizado_em
                 FROM usuarios
                 WHERE id = ? AND removido_em IS NULL
             ");
-            $stmt->bind_param("i", $id);
-            $stmt->execute();
-            $updatedUser = $stmt->get_result()->fetch_assoc();
+            $stmt->execute([$id]);
+            $updatedUser = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($updatedUser) {
                 $updatedUser['bloqueado'] = (int)$updatedUser['bloqueado'];
-                // Retorna o objeto completo do usuário
                 responderSucesso('Usuário atualizado com sucesso', $updatedUser);
             } else {
                 responderErro('Erro ao buscar usuário atualizado', 500);
             }
         } else {
-            responderErro('Erro ao atualizar usuário: ' . $stmt->error, 500);
+            $errorInfo = $stmt->errorInfo();
+            responderErro('Erro ao atualizar usuário: ' . ($errorInfo[2] ?? 'Erro desconhecido'), 500);
         }
 
     } catch (Exception $e) {
@@ -272,19 +287,20 @@ function handleDelete($conn, $empresa_id, $id) {
     try {
         if (!$id) responderErro('ID não fornecido', 400);
 
+        // Verifica se o usuário existe antes de deletar (PDO)
         $stmt = $conn->prepare("SELECT id FROM usuarios WHERE id = ? AND removido_em IS NULL");
-        $stmt->bind_param("i", $id);
-        $stmt->execute();
-        if ($stmt->get_result()->num_rows === 0) {
+        $stmt->execute([$id]);
+        if (!$stmt->fetch()) {
             responderErro('Usuário não encontrado', 404);
         }
 
+        // Realiza o soft delete (PDO)
         $stmt = $conn->prepare("UPDATE usuarios SET removido_em = NOW() WHERE id = ?");
-        $stmt->bind_param("i", $id);
-        if ($stmt->execute()) {
+        if ($stmt->execute([$id])) {
             responderSucesso('Usuário removido com sucesso');
         } else {
-            responderErro('Erro ao remover usuário: ' . $stmt->error, 500);
+            $errorInfo = $stmt->errorInfo();
+            responderErro('Erro ao remover usuário: ' . ($errorInfo[2] ?? 'Erro desconhecido'), 500);
         }
 
     } catch (Exception $e) {
