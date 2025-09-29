@@ -272,17 +272,29 @@ class Orcamento {
 
     // NOVO MÉTODO: Obter e incrementar o próximo número de orçamento sequencial por empresa
     public function getAndIncrementNextNumeroOrcamento($empresa_id) {
-        $this->conn->beginTransaction();
         try {
-            // 1. Obter o próximo número da tabela de empresas
-            $query = "SELECT proximo_numero_orcamento FROM empresas WHERE id = :empresa_id FOR UPDATE";
-            $stmt = $this->conn->prepare($query);
-            $stmt->bindParam(':empresa_id', $empresa_id);
-            $stmt->execute();
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            // 1. Obter o próximo número da tabela de empresas (sem lock)
+            $query_select = "SELECT proximo_numero_orcamento FROM empresas WHERE id = :empresa_id";
+            $stmt_select = $this->conn->prepare($query_select);
+            $stmt_select->bindParam(':empresa_id', $empresa_id);
+            
+            if (!$stmt_select->execute()) {
+                $errorInfo = $stmt_select->errorInfo();
+                throw new Exception("Falha ao buscar o contador de orçamento da empresa. Detalhes: " . ($errorInfo[2] ?? 'N/A'));
+            }
+
+            $result = $stmt_select->fetch(PDO::FETCH_ASSOC);
 
             if (!$result) {
-                throw new Exception("Empresa não encontrada ou sem contador de orçamento.");
+                // Verificar se a coluna existe, mas o valor é NULL
+                $check_column_query = "SHOW COLUMNS FROM empresas LIKE 'proximo_numero_orcamento'";
+                $column_exists = $this->conn->query($check_column_query)->fetch();
+
+                if (!$column_exists) {
+                     throw new Exception("A coluna 'proximo_numero_orcamento' não existe na tabela 'empresas'. Por favor, execute o script de migração do banco de dados.");
+                }
+
+                throw new Exception("Empresa com ID {$empresa_id} não encontrada ou o contador de orçamento não está inicializado (NULL).");
             }
 
             $proximo_sequencial = (int) $result['proximo_numero_orcamento'];
@@ -290,16 +302,18 @@ class Orcamento {
             $numero_orcamento_formatado = sprintf('%04d', $proximo_sequencial) . '/' . $ano_atual;
 
             // 2. Incrementar o contador na tabela de empresas
-            $query = "UPDATE empresas SET proximo_numero_orcamento = proximo_numero_orcamento + 1 WHERE id = :empresa_id";
-            $stmt = $this->conn->prepare($query);
-            $stmt->bindParam(':empresa_id', $empresa_id);
-            $stmt->execute();
+            $query_update = "UPDATE empresas SET proximo_numero_orcamento = proximo_numero_orcamento + 1 WHERE id = :empresa_id";
+            $stmt_update = $this->conn->prepare($query_update);
+            $stmt_update->bindParam(':empresa_id', $empresa_id);
+            
+            if (!$stmt_update->execute()) {
+                $errorInfo = $stmt_update->errorInfo();
+                throw new Exception("Falha ao incrementar o contador de orçamento. Detalhes: " . ($errorInfo[2] ?? 'N/A'));
+            }
 
-            $this->conn->commit();
             return $numero_orcamento_formatado;
 
         } catch (Exception $e) {
-            $this->conn->rollBack();
             error_log("Erro ao obter e incrementar número de orçamento: " . $e->getMessage());
             throw $e; // Re-lançar a exceção para ser tratada no orcamentos.php
         }
