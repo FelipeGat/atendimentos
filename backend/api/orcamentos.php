@@ -102,11 +102,16 @@ function validarCliente($cliente_id, $pdo) {
 // Função para obter empresa ID do header
 function obterEmpresaId() {
     $headers = getallheaders();
+    // Prioridade para o cabeçalho padrão
     if (isset($headers['X-Empresa-ID'])) {
         return $headers['X-Empresa-ID'];
     }
     if (isset($headers['x-empresa-id'])) {
         return $headers['x-empresa-id'];
+    }
+    // Fallback para a variável $_SERVER (mais compatível)
+    if (isset($_SERVER['HTTP_X_EMPRESA_ID'])) {
+        return $_SERVER['HTTP_X_EMPRESA_ID'];
     }
     return null;
 }
