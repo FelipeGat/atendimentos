@@ -82,7 +82,6 @@ const Assuntos = () => {
         }
 
         try {
-            let response;
             if (editingAssunto) {
                 await assuntosAPI.atualizar(editingAssunto.id, formData);
                 showSuccess('Assunto atualizado com sucesso');
@@ -95,15 +94,11 @@ const Assuntos = () => {
                     )
                 );
             } else {
-                response = await assuntosAPI.criar(formData);
+                await assuntosAPI.criar(formData);
                 showSuccess('Assunto criado com sucesso');
-                // Adicionar o novo assunto à lista
-                const novoAssunto = response.data ? response.data : { 
-                    ...formData, 
-                    id: Date.now(), 
-                    criado_em: new Date().toISOString()
-                };
-                setAssuntos(prevAssuntos => [...prevAssuntos, novoAssunto]);
+                
+                // Sempre recarregar a lista após criar para garantir sincronização
+                await fetchAssuntos();
             }
 
             handleCloseModal();

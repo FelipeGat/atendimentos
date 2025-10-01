@@ -15,12 +15,13 @@ import {
     Clock
 } from 'lucide-react';
 import { useMessage } from '../../hooks/useMessage';
+import { apiRequest, getApiBase, getHeaders } from '../../utils/api';
 import Message from '../../components/Message';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import './Anexos.css';
 
-// Configuração da API
-const API_BASE = process.env.REACT_APP_API_BASE_URL;
+// API Base (runtime-resolved)
+const API_BASE = getApiBase();
 
 const AnexosCorrigidoCompleto = ({ atendimentoId, onClose }) => {
     // Estados principais
@@ -39,88 +40,7 @@ const AnexosCorrigidoCompleto = ({ atendimentoId, onClose }) => {
 
     const { message, showSuccess, showError } = useMessage();
 
-    // Função para obter headers com empresa ID
-    const getHeaders = () => {
-        const empresaId = localStorage.getItem('empresa_id') ||
-            sessionStorage.getItem('empresa_id') ||
-            window.EMPRESA_ID ||
-            '1';
-
-        return {
-            'X-Empresa-ID': empresaId,
-            'Accept': 'application/json'
-        };
-    };
-
-    // Função para requisições API (sem Content-Type para FormData)
-    const apiRequest = async (url, options = {}) => {
-        const headers = getHeaders();
-
-        const config = {
-            ...options,
-            headers: {
-                ...headers,
-                ...options.headers
-            }
-        };
-
-        // Para FormData, não definir Content-Type
-        if (!(options.body instanceof FormData)) {
-            config.headers['Content-Type'] = 'application/json';
-        }
-
-        console.log('=== REQUISIÇÃO API ANEXOS ===');
-        console.log('URL:', url);
-        console.log('Headers:', config.headers);
-        console.log('Method:', config.method || 'GET');
-
-        try {
-            const response = await fetch(url, config);
-
-            console.log('Response status:', response.status);
-            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
-            // Verificar se a resposta é JSON
-            const contentType = response.headers.get('content-type');
-            console.log('Content-Type:', contentType);
-
-            if (!contentType || !contentType.includes('application/json')) {
-                const textResponse = await response.text();
-                console.log('Response text (não JSON):', textResponse.substring(0, 500));
-
-                let errorMessage = 'Erro no servidor';
-                if (response.status === 404) {
-                    errorMessage = 'API não encontrada (404). Verifique se o XAMPP está rodando e o arquivo existe em: C:\\xampp\\htdocs\\Atendimentos\\backend\\api\\anexos.php';
-                } else if (response.status === 500) {
-                    errorMessage = 'Erro interno do servidor (500)';
-                } else if (response.status === 403) {
-                    errorMessage = 'Acesso negado (403)';
-                } else if (response.status === 0) {
-                    errorMessage = 'Erro de CORS ou servidor não acessível. Verifique se o XAMPP está rodando.';
-                }
-
-                throw new Error(errorMessage);
-            }
-
-            const data = await response.json();
-            console.log('Response data:', data);
-
-            if (!response.ok) {
-                throw new Error(data.message || data.error || `HTTP ${response.status}`);
-            }
-
-            return data;
-        } catch (error) {
-            console.error('Erro na requisição:', error);
-
-            // Tratamento específico para erros de rede
-            if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                throw new Error('Erro de conexão. Verifique se o XAMPP está rodando na porta 80.');
-            }
-
-            throw error;
-        }
-    };
+    // Use shared apiRequest from utils for consistent headers and runtime base
 
     // Carregar dados
     const fetchData = async () => {
