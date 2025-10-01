@@ -236,14 +236,19 @@ function getEstatisticasGerais($pdo, $empresa_id) {
     $stats['atendimentos_mes'] = $stmt->fetchColumn();
     
     // 6. Receita total dos atendimentos concluídos este mês (FILTRADO pela empresa atual ou todas)
+    // IMPORTANTE: Considera apenas orçamentos aprovados E dentro da validade
     if ($empresa_id) {
         $stmt = $pdo->prepare("
             SELECT COALESCE(SUM(o.valor_total), 0) as total 
             FROM atendimentos a
             JOIN orcamentos o ON a.numero_orcamento = o.numero_orcamento AND a.empresa_id = o.empresa_id
-            WHERE a.empresa_id = ? AND a.removido_em IS NULL AND o.status = 'aprovado'
-            AND MONTH(a.criado_em) = MONTH(CURRENT_DATE()) 
-            AND YEAR(a.criado_em) = YEAR(CURRENT_DATE())
+            WHERE a.empresa_id = ? 
+                AND a.removido_em IS NULL 
+                AND LOWER(o.status) = 'aprovado'
+                AND o.removido_em IS NULL
+                AND (o.validade_orcamento IS NULL OR o.validade_orcamento >= CURRENT_DATE())
+                AND MONTH(a.criado_em) = MONTH(CURRENT_DATE()) 
+                AND YEAR(a.criado_em) = YEAR(CURRENT_DATE())
         ");
         $stmt->execute([$empresa_id]);
     } else {
@@ -251,13 +256,56 @@ function getEstatisticasGerais($pdo, $empresa_id) {
             SELECT COALESCE(SUM(o.valor_total), 0) as total 
             FROM atendimentos a
             JOIN orcamentos o ON a.numero_orcamento = o.numero_orcamento AND a.empresa_id = o.empresa_id
-            WHERE a.removido_em IS NULL AND o.status = 'aprovado'
-            AND MONTH(a.criado_em) = MONTH(CURRENT_DATE()) 
-            AND YEAR(a.criado_em) = YEAR(CURRENT_DATE())
+            WHERE a.removido_em IS NULL 
+                AND LOWER(o.status) = 'aprovado'
+                AND o.removido_em IS NULL
+                AND (o.validade_orcamento IS NULL OR o.validade_orcamento >= CURRENT_DATE())
+                AND MONTH(a.criado_em) = MONTH(CURRENT_DATE()) 
+                AND YEAR(a.criado_em) = YEAR(CURRENT_DATE())
         ");
         $stmt->execute();
     }
     $stats['receita_mes'] = $stmt->fetchColumn();
+    
+    // DEBUG: Informações adicionais sobre a receita (remover após identificar problema)
+    if (DEVELOPMENT_MODE) {
+        // Contar quantos orçamentos foram considerados
+        if ($empresa_id) {
+            $stmt_debug = $pdo->prepare("
+                SELECT COUNT(*) 
+                FROM atendimentos a
+                JOIN orcamentos o ON a.numero_orcamento = o.numero_orcamento AND a.empresa_id = o.empresa_id
+                WHERE a.empresa_id = ? 
+                    AND a.removido_em IS NULL 
+                    AND LOWER(o.status) = 'aprovado'
+                    AND o.removido_em IS NULL
+                    AND (o.validade_orcamento IS NULL OR o.validade_orcamento >= CURRENT_DATE())
+                    AND MONTH(a.criado_em) = MONTH(CURRENT_DATE()) 
+                    AND YEAR(a.criado_em) = YEAR(CURRENT_DATE())
+            ");
+            $stmt_debug->execute([$empresa_id]);
+        } else {
+            $stmt_debug = $pdo->prepare("
+                SELECT COUNT(*) 
+                FROM atendimentos a
+                JOIN orcamentos o ON a.numero_orcamento = o.numero_orcamento AND a.empresa_id = o.empresa_id
+                WHERE a.removido_em IS NULL 
+                    AND LOWER(o.status) = 'aprovado'
+                    AND o.removido_em IS NULL
+                    AND (o.validade_orcamento IS NULL OR o.validade_orcamento >= CURRENT_DATE())
+                    AND MONTH(a.criado_em) = MONTH(CURRENT_DATE()) 
+                    AND YEAR(a.criado_em) = YEAR(CURRENT_DATE())
+            ");
+            $stmt_debug->execute();
+        }
+        $stats['receita_mes_debug'] = [
+            'total_orcamentos_contados' => $stmt_debug->fetchColumn(),
+            'mes_filtro' => date('m'),
+            'ano_filtro' => date('Y'),
+            'data_hoje' => date('Y-m-d')
+        ];
+    }
+    
     
     return $stats;
 }
@@ -376,10 +424,18 @@ function getTopClientes($pdo, $empresa_id) {
         SELECT 
             c.nome,
             COUNT(a.id) as total_atendimentos,
-            COALESCE(SUM(o.valor_total), 0) as valor_total
+            COALESCE(SUM(
+                CASE 
+                    WHEN LOWER(o.status) = 'aprovado' 
+                        AND o.removido_em IS NULL
+                        AND (o.validade_orcamento IS NULL OR o.validade_orcamento >= CURRENT_DATE())
+                    THEN o.valor_total 
+                    ELSE 0 
+                END
+            ), 0) as valor_total
         FROM clientes c
         JOIN atendimentos a ON c.id = a.cliente_id AND a.removido_em IS NULL
-        LEFT JOIN orcamentos o ON a.numero_orcamento = o.numero_orcamento AND o.empresa_id = ? AND o.status = 'aprovado'
+        LEFT JOIN orcamentos o ON a.numero_orcamento = o.numero_orcamento AND o.empresa_id = ?
         WHERE c.empresa_id = ? AND c.removido_em IS NULL
         GROUP BY c.id, c.nome
         ORDER BY total_atendimentos DESC
@@ -419,16 +475,22 @@ function getPerformanceUsuarios($pdo, $empresa_id) {
             u.nome,
             COUNT(a.id) as total_atendimentos,
             COUNT(CASE WHEN a.status = 'concluido' THEN 1 END) as atendimentos_concluidos,
-            COALESCE(SUM(o.valor_total), 0) as valor_total
+            COALESCE(SUM(
+                CASE 
+                    WHEN LOWER(o.status) = 'aprovado' 
+                        AND o.removido_em IS NULL
+                        AND (o.validade_orcamento IS NULL OR o.validade_orcamento >= CURRENT_DATE())
+                    THEN o.valor_total 
+                    ELSE 0 
+                END
+            ), 0) as valor_total
         FROM usuarios u
         -- JOIN com empresa_tecnicos para garantir que apenas usuários da empresa sejam contados
         INNER JOIN empresa_tecnicos et ON u.id = et.usuario_id 
         LEFT JOIN atendimentos a ON u.id = a.atendente_id AND a.removido_em IS NULL
         LEFT JOIN orcamentos o 
             ON a.numero_orcamento = o.numero_orcamento 
-            AND o.empresa_id = ? 
-            AND o.status = 'aprovado' 
-            AND o.removido_em IS NULL
+            AND o.empresa_id = ?
         -- Filtro: Pela empresa (et.empresa_id) e usuário ativo (u.bloqueado = 0)
         WHERE et.empresa_id = ? AND u.removido_em IS NULL AND u.bloqueado = 0
         GROUP BY u.id, u.nome
