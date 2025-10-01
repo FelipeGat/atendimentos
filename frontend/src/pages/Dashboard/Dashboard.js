@@ -45,15 +45,20 @@ const Dashboard = () => {
     const fetchDashboardData = async (empresaId) => {
         if (!empresaId) {
             // Não tenta buscar se não houver um ID
+            console.warn('Dashboard: empresaId não fornecido');
             setLoading(false);
             return;
         }
 
+        console.log('Dashboard: Carregando dados para empresa ID:', empresaId);
+
         try {
             setLoading(true);
             const result = await dashboardAPI.obterDados({ empresaId });
+            console.log('Dashboard: Dados recebidos:', result);
             setDashboardData(result.data || {});
         } catch (error) {
+            console.error('Dashboard: Erro ao carregar:', error);
             showError('Erro ao carregar dados do dashboard. Mensagem: ' + error.message);
         } finally {
             setLoading(false);
