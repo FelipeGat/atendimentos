@@ -154,6 +154,9 @@ function handleGet($conn, $empresa_id, $id = null)
             $row = $result->fetch_assoc();
 
             if ($row) {
+                error_log("DEBUG - Atendimento individual: ID=" . $row['id'] . 
+                         ", empresa_id=" . $row['empresa_id'] . 
+                         ", empresa_nome=" . ($row['empresa_nome'] ?? 'NULL'));
                 responderSucesso('Atendimento encontrado', $row);
             } else {
                 responderErro('Atendimento não encontrado', 404);
@@ -166,7 +169,7 @@ function handleGet($conn, $empresa_id, $id = null)
         $status = $_GET['status'] ?? null;
         $search = $_GET['search'] ?? null;
 
-        // SQL base
+        // SQL base - CORRIGIDO: Mudando para LEFT JOIN com clientes também para lidar com possíveis inconsistências
         $sql = "SELECT a.*, 
                        c.nome AS cliente_nome, 
                        u.nome AS atendente_nome, 
@@ -175,11 +178,11 @@ function handleGet($conn, $empresa_id, $id = null)
                        e.nome AS empresa_nome, 
                        e.custo_operacional_dia 
                 FROM atendimentos a 
-                INNER JOIN clientes c ON c.id = a.cliente_id 
+                LEFT JOIN clientes c ON c.id = a.cliente_id 
                 LEFT JOIN usuarios u ON u.id = a.atendente_id 
                 LEFT JOIN equipamentos eq ON eq.id = a.equipamento_id
                 LEFT JOIN assuntos ass ON ass.id = a.assunto_id
-                INNER JOIN empresas e ON e.id = a.empresa_id
+                LEFT JOIN empresas e ON e.id = a.empresa_id
                 WHERE a.removido_em IS NULL";
 
         $params = [];
@@ -223,6 +226,16 @@ function handleGet($conn, $empresa_id, $id = null)
 
         $result = $stmt->get_result();
         $rows = $result->fetch_all(MYSQLI_ASSOC);
+        
+        // Adicionando log para depuração
+        error_log("DEBUG - Atendimentos retornados: " . count($rows));
+        foreach ($rows as $index => $atendimento) {
+            error_log("DEBUG - Atendimento $index: ID=" . $atendimento['id'] . 
+                     ", cliente_id=" . ($atendimento['cliente_id'] ?? 'NULL') .
+                     ", empresa_id=" . ($atendimento['empresa_id'] ?? 'NULL') . 
+                     ", empresa_nome=" . ($atendimento['empresa_nome'] ?? 'NULL') .
+                     ", cliente_nome=" . ($atendimento['cliente_nome'] ?? 'NULL'));
+        }
 
         responderSucesso('Atendimentos listados', $rows);
 

@@ -308,8 +308,9 @@ const AtendimentosRefatorado = () => {
     }, [equipamentos]);
 
     const getEmpresaNome = useCallback((id) => {
+        if (!id) return 'Desconhecido';
         const empresa = empresas.find(e => e.id === id);
-        return empresa ? empresa.nome : 'Desconhecido';
+        return empresa ? empresa.nome : `Empresa ID ${id} (não encontrada)`;
     }, [empresas]);
 
     // Carregar dados iniciais (empresas e depois o resto)

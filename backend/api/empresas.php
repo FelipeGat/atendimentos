@@ -154,6 +154,9 @@ function handleGet($conn, $id) {
             
             foreach ($empresas as &$empresa) {
                 $empresa["ativo"] = (int)$empresa["ativo"];
+                error_log("DEBUG - Empresa disponível: ID=" . $empresa["id"] . 
+                         ", Nome=" . $empresa["nome"] . 
+                         ", Razão Social=" . $empresa["razao_social"]);
             }
             
             responderSucesso("Empresas listadas com sucesso", $empresas);
