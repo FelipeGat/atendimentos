@@ -82,7 +82,6 @@ const Assuntos = () => {
         }
 
         try {
-            let response;
             if (editingAssunto) {
                 await assuntosAPI.atualizar(editingAssunto.id, formData);
                 showSuccess('Assunto atualizado com sucesso');
@@ -95,15 +94,17 @@ const Assuntos = () => {
                     )
                 );
             } else {
-                response = await assuntosAPI.criar(formData);
+                const response = await assuntosAPI.criar(formData);
                 showSuccess('Assunto criado com sucesso');
-                // Adicionar o novo assunto à lista
-                const novoAssunto = response.data ? response.data : { 
-                    ...formData, 
-                    id: Date.now(), 
-                    criado_em: new Date().toISOString()
-                };
-                setAssuntos(prevAssuntos => [...prevAssuntos, novoAssunto]);
+                
+                // Usar dados retornados pela API ou criar fallback
+                if (response.data && response.data.id) {
+                    // API retornou os dados completos - usar diretamente
+                    setAssuntos(prevAssuntos => [...prevAssuntos, response.data]);
+                } else {
+                    // Fallback: recarregar a lista completa
+                    await fetchAssuntos();
+                }
             }
 
             handleCloseModal();

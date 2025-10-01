@@ -15,7 +15,7 @@ import {
     Clock
 } from 'lucide-react';
 import { useMessage } from '../../hooks/useMessage';
-import { apiRequest, getApiBase } from '../../utils/api';
+import { apiRequest, getApiBase, getHeaders } from '../../utils/api';
 import Message from '../../components/Message';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import './Anexos.css';

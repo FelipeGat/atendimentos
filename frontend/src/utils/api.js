@@ -5,6 +5,20 @@
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
 /**
+ * Retorna a URL base da API
+ */
+export const getApiBase = () => {
+    return API_BASE_URL;
+};
+
+/**
+ * Retorna os headers padrão (para compatibilidade com código legado)
+ */
+export const getHeaders = (empresaId = null) => {
+    return getDefaultHeaders(false, empresaId);
+};
+
+/**
  * Monta os cabeçalhos padrão, incluindo o X-Empresa-ID se fornecido.
  */
 const getDefaultHeaders = (isFormData = false, empresaId = null) => {

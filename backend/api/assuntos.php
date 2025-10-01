@@ -71,13 +71,17 @@ switch ($metodo) {
 
     case 'PUT':
         $dados = json_decode(file_get_contents("php://input"), true);
+        
+        // Aceitar ID tanto do body quanto da query string
+        $id = $dados['id'] ?? $_GET['id'] ?? null;
+        $nome = $dados['nome'] ?? null;
 
-        if (!isset($dados['id']) || !isset($dados['nome'])) {
+        if (!$id || !$nome) {
             responderErro("Campos obrigatórios: id, nome.", 400);
         }
 
         $stmt = $conn->prepare("UPDATE assuntos SET nome = ? WHERE id = ?");
-        $stmt->bind_param("si", $dados['nome'], $dados['id']);
+        $stmt->bind_param("si", $nome, $id);
 
         if ($stmt->execute()) {
             responderSucesso("Assunto atualizado com sucesso.");
