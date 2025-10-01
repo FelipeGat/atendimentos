@@ -32,10 +32,14 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import FormularioOrcamento from './FormularioOrcamento';
 import toast from 'react-hot-toast';
 import ToggleSwitch from '../../components/ToggleSwitch';
+import { pdf } from '@react-pdf/renderer';
+import LayoutDeltaPdf from '../../components/pdf/LayoutDeltaPdf';
+import LayoutGWPdf from '../../components/pdf/LayoutGWPdf';
+import LayoutInvestDigitalPdf from '../../components/pdf/LayoutInvestDigitalPdf';
 import './Orcamentos.css';
 
 // Componente do Modal de Visualização
-const ViewModal = ({ orcamento, loading, onClose, handleEdit, getUsuarioNome, getEmpresaNome }) => {
+const ViewModal = ({ orcamento, loading, onClose, handleEdit, getUsuarioNome, getEmpresaNome, clientes, empresas, handleDownloadPDF }) => {
     const [activeTab, setActiveTab] = useState('details');
 
     if (!orcamento) return null;
@@ -78,20 +82,11 @@ const ViewModal = ({ orcamento, loading, onClose, handleEdit, getUsuarioNome, ge
         return null;
     };
 
-    const handlePrint = () => {
-        const content = document.getElementById('modal-para-imprimir');
-        if (!content || loading) {
-            console.error('Conteúdo para impressão não está pronto.');
-            return;
-        }
-        // Sua lógica de impressão...
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`<html><head><title>Orçamento #${orcamento.numero_orcamento}</title></head><body>${content.innerHTML}</body></html>`);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
-        printWindow.close();
-    };
+    // A função handlePrint original foi removida do ViewModal, pois a lógica de impressão
+    // será centralizada na função handleDownloadPDF do componente pai OrcamentosRefatorado.
+    // O botão de impressão no modal agora chama handleDownloadPDF diretamente.
+
+    const empresa = empresas.find(e => e.id === orcamento.empresa_id);
 
     return (
         <div className="modal-overlay" onClick={onClose}>
@@ -218,11 +213,13 @@ const ViewModal = ({ orcamento, loading, onClose, handleEdit, getUsuarioNome, ge
                 <div className="modal-actions">
                     <button className="btn btn-secondary" onClick={onClose}>Fechar</button>
                     <button className="btn btn-outline" onClick={() => handleEdit(orcamento)} disabled={loading}><Edit size={16} /> Editar</button>
-                    <button className="btn btn-primary" onClick={handlePrint} disabled={loading}><Printer size={16} /> Imprimir</button>
+                    {/* O botão de impressão agora chama handleDownloadPDF do componente pai */}
+                    <button className="btn btn-primary" onClick={() => handleDownloadPDF(orcamento, empresa)} disabled={loading} > <Printer size={16} /> Imprimir PDF </button>
                 </div>
             </div>
         </div>
     );
+
 };
 
 const OrcamentosRefatorado = () => {
@@ -246,22 +243,22 @@ const OrcamentosRefatorado = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [recordsPerPage, setRecordsPerPage] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
-    const [statusFilter, setStatusFilter] = useState('Aprovado');
+    const [statusFilter, setStatusFilter] = useState('Aprovado'); // Definido como 'Aprovado' por padrão
+    const [showAll, setShowAll] = useState(false);
     const [empresaFilter, setEmpresaFilter] = useState('');
     const [clienteFilter, setClienteFilter] = useState('');
     const [responsavelFilter, setResponsavelFilter] = useState('');
-    const [showAll, setShowAll] = useState(false);
     const { message, showSuccess, showError } = useMessage();
 
     // Opções de status
-    const statusOptions = [
+    const statusOptions = useMemo(() => [
         { value: 'Rascunho', label: 'Rascunho', icon: Edit },
         { value: 'Pendente', label: 'Pendente', icon: Clock },
         { value: 'Aguardando Aprovacao', label: 'Aguardando Aprovação', icon: Send },
         { value: 'Aprovado', label: 'Aprovado', icon: CheckCircle },
         { value: 'Rejeitado', label: 'Rejeitado', icon: XCircle },
         { value: 'Cancelado', label: 'Cancelado', icon: AlertTriangle }
-    ];
+    ], []);
 
     // Funções de formatação
     const formatCurrency = useCallback((value) => {
@@ -280,7 +277,7 @@ const OrcamentosRefatorado = () => {
 
     const formatStatus = useCallback((s) => {
         if (!s) return '-';
-        const statusInfo = statusOptions.find(opt => opt.value === s.toLowerCase());
+        const statusInfo = statusOptions.find(opt => opt.value === s);
         return statusInfo ? statusInfo.label : s.charAt(0).toUpperCase() + s.slice(1);
     }, [statusOptions]);
 
@@ -300,129 +297,99 @@ const OrcamentosRefatorado = () => {
         return usuario ? usuario.nome : 'Desconhecido';
     }, [usuarios]);
 
-    // Carregamento de dados
-    const fetchOrcamentos = useCallback(async (empresaId) => {
+    // Funções de carregamento de dados
+    const fetchClientes = useCallback(async () => {
+        try {
+            const response = await clientesAPI.listar();
+            setClientes(response.data);
+        } catch (error) {
+            console.error("Erro ao buscar clientes:", error);
+            showError('Erro ao carregar clientes.');
+        }
+    }, [showError]);
+
+    const fetchEmpresas = useCallback(async () => {
+        try {
+            const response = await empresasAPI.listar();
+            setEmpresas(response.data);
+        } catch (error) {
+            console.error("Erro ao buscar empresas:", error);
+            showError('Erro ao carregar empresas.');
+        }
+    }, [showError]);
+
+    const fetchUsuarios = useCallback(async () => {
+        try {
+            const response = await usuariosAPI.listar();
+            setUsuarios(response.data);
+        } catch (error) {
+            console.error("Erro ao buscar usuários:", error);
+            showError('Erro ao carregar usuários.');
+        }
+    }, [showError]);
+
+    const fetchOrcamentos = useCallback(async (empresaId = null) => {
         setLoading(true);
         try {
-            // Passa o empresaId para a API. Se for uma string vazia ou null, a API não enviará o header.
-            const response = await orcamentosAPI.listar({ empresaId });
-
-            if (response && response.success) {
-                setOrcamentos(response.data || []);
-            } else {
-                setOrcamentos([]);
-                // Não mostra erro se a lista estiver apenas vazia, só se a requisição falhar.
-                if (!response.success) {
-                    showError(response.message || 'Não foi possível carregar os orçamentos.');
-                }
+            const params = {};
+            if (empresaId) {
+                params.empresa_id = empresaId;
             }
+            const response = await orcamentosAPI.listar(params);
+            setOrcamentos(response.data);
         } catch (error) {
-            showError(`Erro ao buscar orçamentos: ${error.message}`);
-            setOrcamentos([]);
+            console.error("Erro ao buscar orçamentos:", error);
+            showError('Erro ao carregar orçamentos.');
         } finally {
             setLoading(false);
+            setInitialLoad(false);
         }
     }, [showError]);
 
     useEffect(() => {
-        if (showAll) {
-            setStatusFilter('');
-        } else {
-            setStatusFilter('Aprovado');
-        }
-    }, [showAll]);
+        fetchClientes();
+        fetchEmpresas();
+        fetchUsuarios();
+        fetchOrcamentos();
+    }, [fetchClientes, fetchEmpresas, fetchUsuarios, fetchOrcamentos]);
 
-    useEffect(() => {
-        const fetchAuxData = async () => {
-            try {
-                const [clientesRes, empresasRes, usuariosRes] = await Promise.all([
-                    clientesAPI.listar(),
-                    empresasAPI.listar(),
-                    usuariosAPI.listar()
-                ]);
-
-                console.log("📊 Clientes:", clientesRes);
-                console.log("🏢 Empresas:", empresasRes);
-                console.log("👤 Usuários:", usuariosRes);
-
-                setClientes(clientesRes.data || []);
-                setEmpresas((empresasRes.data || []).map(e => ({
-                    ...e,
-                    nome_fantasia: e.nome_fantasia || e.nome || ''
-                })));
-                setUsuarios(usuariosRes.data || []);
-            } catch (error) {
-                showError(`Erro ao carregar dados de suporte: ${error.message}`);
-            }
-        };
-
-        fetchAuxData();
-        fetchOrcamentos('');
-        setInitialLoad(false);
-    }, [fetchOrcamentos, showError]);
-
-    useEffect(() => {
-        if (!initialLoad) {
-            fetchOrcamentos(empresaFilter);
-        }
-    }, [empresaFilter, initialLoad, fetchOrcamentos]);
-
-    // Manipuladores de eventos
+    // Funções de manipulação de modais
     const handleCreate = () => {
         setEditingOrcamento(null);
         setShowModal(true);
     };
 
-    const handleEdit = async (orcamentoDaLista) => {
-        const toastId = toast.loading('Carregando dados para edição...');
-
-        try {
-            const response = await orcamentosAPI.buscar(orcamentoDaLista.id);
-
-            if (response && response.success) {
-                setEditingOrcamento(response.data);
-
-                setShowModal(true);
-
-                toast.dismiss(toastId);
-            } else {
-                toast.error("Falha ao carregar dados do orçamento para edição.");
-                toast.dismiss(toastId);
-            }
-        } catch (error) {
-            toast.error(`Erro: ${error.message}`);
-            toast.dismiss(toastId);
-        }
+    const handleEdit = (orcamento) => {
+        setEditingOrcamento(orcamento);
+        setShowModal(true);
     };
 
-    const handleView = async (orcamentoDaLista) => {
+    const handleView = useCallback(async (orcamento) => {
         setLoadingModal(true);
         setShowViewModal(true);
-        setViewingOrcamento(orcamentoDaLista);
-
+        setViewingOrcamento(orcamento);
         try {
-            // Busca os detalhes completos do orçamento
-            const response = await orcamentosAPI.buscar(orcamentoDaLista.id);
-
-            if (response && response.success) {
-                console.log("Detalhes completos do orçamento carregados:", response.data);
-                setViewingOrcamento(response.data);
-            } else {
-                showError("Não foi possível carregar os detalhes do orçamento.");
-                setShowViewModal(false);
-            }
+            // Busca o orçamento completo com todos os detalhes (serviços, materiais, etc.)
+            const response = await orcamentosAPI.buscar(orcamento.id, { empresaId: orcamento.empresa_id });
+            setViewingOrcamento(response.data);
         } catch (error) {
-            showError(`Erro ao buscar detalhes: ${error.message}`);
+            console.error("Erro ao carregar detalhes do orçamento:", error);
+            showError('Erro ao carregar detalhes do orçamento.');
             setShowViewModal(false);
         } finally {
             setLoadingModal(false);
         }
+    }, [showError]);
+
+    const handleCloseViewModal = () => {
+        setShowViewModal(false);
+        setViewingOrcamento(null);
     };
 
     const handleDelete = async (orcamento) => {
         if (window.confirm(`Tem certeza que deseja excluir o orçamento #${orcamento.numero_orcamento}?`)) {
             try {
-                await orcamentosAPI.excluir(orcamento.id, orcamento.empresa_id);
+                await orcamentosAPI.excluir(orcamento.id);
                 showSuccess('Orçamento excluído com sucesso!');
                 fetchOrcamentos();
             } catch (error) {
@@ -430,6 +397,61 @@ const OrcamentosRefatorado = () => {
             }
         }
     };
+
+    const handleDownloadPDF = useCallback(async (orcamento, empresa) => {
+        if (!orcamento || !empresa) {
+            toast.error('Dados do orçamento ou empresa incompletos para gerar o PDF.');
+            return;
+        }
+
+        let LayoutComponent = null;
+        let fileName = `orcamento_${orcamento.numero_orcamento}`;
+
+        // Lógica para selecionar o layout de PDF com base no nome da empresa
+        const empresaNome = (empresa.nome_fantasia || empresa.nome).toLowerCase();
+
+        if (empresaNome.includes('delta')) {
+            LayoutComponent = LayoutDeltaPdf;
+            fileName += '_delta.pdf';
+        } else if (empresaNome.includes('gw')) {
+            LayoutComponent = LayoutGWPdf;
+            fileName += '_gw.pdf';
+        } else if (empresaNome.includes('invest')) {
+            LayoutComponent = LayoutInvestDigitalPdf;
+            fileName += '_invest.pdf';
+        } else {
+            // Fallback para um layout padrão se nenhum for encontrado
+            toast.error('Layout de PDF não encontrado para esta empresa. Usando LayoutDeltaPdf como fallback.');
+            LayoutComponent = LayoutDeltaPdf;
+            fileName += '_default.pdf';
+        }
+
+        try {
+            toast.loading('Gerando PDF...');
+            const blob = await pdf(
+                <LayoutComponent
+                    orcamento={orcamento}
+                    empresa={empresa}
+                    cliente={clientes.find(c => c.id === orcamento.cliente_id)}
+                />
+            ).toBlob();
+
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            toast.dismiss();
+            toast.success('PDF gerado com sucesso!');
+        } catch (err) {
+            console.error("Erro ao gerar PDF:", err);
+            toast.dismiss();
+            toast.error('Erro ao gerar PDF.');
+        }
+    }, [clientes]); // Adicionado 'clientes' como dependência para que o find funcione corretamente
 
     const handleSave = async (orcamentoData) => {
         try {
@@ -773,27 +795,11 @@ const OrcamentosRefatorado = () => {
                                             </div>
                                         </div>
                                         <div className="card-content">
-                                            <div className="card-empresa">
-                                                <Building size={16} />
-                                                <span>{getEmpresaNome(orcamento.empresa_id)}</span>
-                                            </div>
-                                            <div className="card-cliente">
-                                                <User size={16} />
-                                                <span>{getClienteNome(orcamento.cliente_id)}</span>
-                                            </div>
-                                            <div className="card-referencia">
-                                                <strong>Ref:</strong> {orcamento.referencia || '-'}
-                                            </div>
-                                            <div className="card-meta">
-                                                <div className="meta-item">
-                                                    <Calendar size={14} />
-                                                    <span>{formatDate(orcamento.data_orcamento)}</span>
-                                                </div>
-                                                <div className="meta-item">
-                                                    <DollarSign size={14} />
-                                                    <span>{formatCurrency(orcamento.valor_total)}</span>
-                                                </div>
-                                            </div>
+                                            <p><Building /> {getEmpresaNome(orcamento.empresa_id)}</p>
+                                            <p><User /> {orcamento.cliente_nome || 'Desconhecido'}</p>
+                                            <p><FileText /> {orcamento.referencia || '-'}</p>
+                                            <p><Calendar /> {formatDate(orcamento.data_orcamento)}</p>
+                                            <p><DollarSign /> {formatCurrency(orcamento.valor_total)}</p>
                                         </div>
                                         <div className="card-actions">
                                             <button
@@ -829,58 +835,43 @@ const OrcamentosRefatorado = () => {
                                 ))}
                             </div>
                         )}
-
-                        {/* Paginação */}
-                        <div className="pagination-container">
-                            <div className="pagination-info">
-                                Mostrando {((currentPage - 1) * recordsPerPage) + 1} a {Math.min(currentPage * recordsPerPage, filteredData.length)} de {filteredData.length} orçamentos
-                            </div>
-                            <div className="pagination-controls">
-                                <button
-                                    className="pagination-btn"
-                                    onClick={() => goToPage(currentPage - 1)}
-                                    disabled={currentPage === 1}
-                                >
-                                    Anterior
-                                </button>
-                                <span>Página {currentPage} de {totalPages}</span>
-                                <button
-                                    className="pagination-btn"
-                                    onClick={() => goToPage(currentPage + 1)}
-                                    disabled={currentPage === totalPages}
-                                >
-                                    Próxima
-                                </button>
-                            </div>
-                        </div>
                     </>
                 )}
             </div>
 
-            {/* Modal de Formulário */}
-            {showModal && (
-                <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && handleCancel()}>
-                    <div className="modal-content-large">
-                        <FormularioOrcamento
-                            orcamento={editingOrcamento}
-                            empresas={empresas}
-                            clientes={clientes}
-                            onSave={handleSave}
-                            onCancel={handleCancel}
-                        />
-                    </div>
+            {/* Paginação */}
+            {totalPages > 1 && (
+                <div className="pagination-controls-bottom">
+                    <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>Anterior</button>
+                    <span>Página {currentPage} de {totalPages}</span>
+                    <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages}>Próxima</button>
                 </div>
             )}
 
-            {/* Modal de Visualização */}
+            {/* Modal de Formulário de Orçamento */}
+            {showModal && (
+                <FormularioOrcamento
+                    orcamento={editingOrcamento}
+                    onSave={handleSave}
+                    onCancel={handleCancel}
+                    clientes={clientes}
+                    empresas={empresas}
+                    usuarios={usuarios}
+                />
+            )}
+
+            {/* Modal de Visualização de Orçamento */}
             {showViewModal && (
                 <ViewModal
                     orcamento={viewingOrcamento}
                     loading={loadingModal}
-                    onClose={() => setShowViewModal(false)}
+                    onClose={handleCloseViewModal}
                     handleEdit={handleEdit}
-                    getEmpresaNome={getEmpresaNome}
                     getUsuarioNome={getUsuarioNome}
+                    getEmpresaNome={getEmpresaNome}
+                    clientes={clientes}
+                    empresas={empresas}
+                    handleDownloadPDF={handleDownloadPDF} // Passa a função de download para o modal
                 />
             )}
         </div>
@@ -888,5 +879,4 @@ const OrcamentosRefatorado = () => {
 };
 
 export default OrcamentosRefatorado;
-
 
