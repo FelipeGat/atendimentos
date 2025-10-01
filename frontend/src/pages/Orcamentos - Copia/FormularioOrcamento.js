@@ -1115,7 +1115,7 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
             </form>
 
             {/* CSS adicional para o spinner */}
-            <style jsx>{`
+            <style>{`
                 .btn-salvar.loading {
                     opacity: 0.7;
                     cursor: not-allowed;
