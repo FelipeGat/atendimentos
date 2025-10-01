@@ -94,17 +94,11 @@ const Assuntos = () => {
                     )
                 );
             } else {
-                const response = await assuntosAPI.criar(formData);
+                await assuntosAPI.criar(formData);
                 showSuccess('Assunto criado com sucesso');
                 
-                // Usar dados retornados pela API ou criar fallback
-                if (response.data && response.data.id) {
-                    // API retornou os dados completos - usar diretamente
-                    setAssuntos(prevAssuntos => [...prevAssuntos, response.data]);
-                } else {
-                    // Fallback: recarregar a lista completa
-                    await fetchAssuntos();
-                }
+                // Sempre recarregar a lista após criar para garantir sincronização
+                await fetchAssuntos();
             }
 
             handleCloseModal();
