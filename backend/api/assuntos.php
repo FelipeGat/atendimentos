@@ -18,8 +18,15 @@ $metodo = $_SERVER['REQUEST_METHOD'];
 
 switch ($metodo) {
     case 'GET':
-        $sql = "SELECT id, nome, criado_em FROM assuntos ORDER BY nome ASC";
+        // Tentar primeiro com soft delete, se falhar, sem filtro
+        $sql = "SELECT id, nome, criado_em FROM assuntos WHERE (removido_em IS NULL OR removido_em = '') ORDER BY nome ASC";
         $resultado = $conn->query($sql);
+        
+        // Se der erro (coluna não existe), tentar sem o filtro
+        if (!$resultado) {
+            $sql = "SELECT id, nome, criado_em FROM assuntos ORDER BY nome ASC";
+            $resultado = $conn->query($sql);
+        }
 
         if (!$resultado) {
             responderErro("Erro ao buscar assuntos: " . $conn->error, 500);
@@ -44,7 +51,17 @@ switch ($metodo) {
         $stmt->bind_param("s", $dados['nome']);
 
         if ($stmt->execute()) {
-            echo json_encode(["mensagem" => "Assunto cadastrado com sucesso."]);
+            $id_inserido = $stmt->insert_id;
+            
+            // Buscar o assunto recém-criado para retornar os dados completos
+            $stmt_select = $conn->prepare("SELECT id, nome, criado_em FROM assuntos WHERE id = ?");
+            $stmt_select->bind_param("i", $id_inserido);
+            $stmt_select->execute();
+            $resultado = $stmt_select->get_result();
+            $assunto_criado = $resultado->fetch_assoc();
+            $stmt_select->close();
+            
+            responderSucesso("Assunto cadastrado com sucesso.", $assunto_criado);
         } else {
             responderErro("Erro ao cadastrar assunto: " . $stmt->error, 500);
         }
@@ -63,7 +80,7 @@ switch ($metodo) {
         $stmt->bind_param("si", $dados['nome'], $dados['id']);
 
         if ($stmt->execute()) {
-            echo json_encode(["mensagem" => "Assunto atualizado com sucesso."]);
+            responderSucesso("Assunto atualizado com sucesso.");
         } else {
             responderErro("Erro ao atualizar assunto: " . $stmt->error, 500);
         }
@@ -78,13 +95,22 @@ switch ($metodo) {
         responderErro("Campo obrigatório: id.", 400);
     }
 
-    $stmt = $conn->prepare("DELETE FROM assuntos WHERE id = ?");
+    // Tentar soft delete primeiro, se falhar, hard delete
+    $stmt = $conn->prepare("UPDATE assuntos SET removido_em = NOW() WHERE id = ?");
     $stmt->bind_param("i", $id);
+    
+    // Se UPDATE falhar (coluna não existe), fazer DELETE
+    if (!$stmt->execute() || $stmt->affected_rows === 0) {
+        $stmt->close();
+        $stmt = $conn->prepare("DELETE FROM assuntos WHERE id = ?");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+    }
 
-    if ($stmt->execute()) {
-        echo json_encode(["mensagem" => "Assunto excluído com sucesso."]);
+    if ($stmt->affected_rows > 0 || $conn->affected_rows > 0) {
+        responderSucesso("Assunto excluído com sucesso.");
     } else {
-        responderErro("Erro ao excluir assunto: " . $stmt->error, 500);
+        responderErro("Erro ao excluir assunto ou assunto não encontrado.", 500);
     }
 
     $stmt->close();

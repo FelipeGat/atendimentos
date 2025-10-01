@@ -10,7 +10,7 @@ if (!function_exists('responderSucesso')) {
             "success" => true,
             "message" => $mensagem,
             "data" => $dados
-        ]);
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit();
     }
 }
@@ -21,7 +21,7 @@ if (!function_exists('responderErro')) {
         echo json_encode([
             "success" => false,
             "message" => $mensagem
-        ]);
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit();
     }
 }
@@ -33,4 +33,3 @@ if (!function_exists('obterEmpresaId')) {
     }
 }
 ?>
-

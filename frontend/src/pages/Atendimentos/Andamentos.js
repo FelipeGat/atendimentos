@@ -11,12 +11,13 @@ import {
     AlertCircle
 } from 'lucide-react';
 import { useMessage } from '../../hooks/useMessage';
+import { apiRequest, getApiBase } from '../../utils/api';
 import Message from '../../components/Message';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import './Andamentos.css';
 
-// Configuração da API
-const API_BASE = process.env.REACT_APP_API_BASE_URL;
+// API Base (runtime-resolved)
+const API_BASE = getApiBase();
 
 const AndamentosCorrigidoCompleto = ({ atendimentoId, onClose }) => {
     // Estados principais
@@ -35,84 +36,7 @@ const AndamentosCorrigidoCompleto = ({ atendimentoId, onClose }) => {
 
     const { message, showSuccess, showError } = useMessage();
 
-    // Função para obter headers com empresa ID
-    const getHeaders = () => {
-        const empresaId = localStorage.getItem('empresa_id') ||
-            sessionStorage.getItem('empresa_id') ||
-            window.EMPRESA_ID ||
-            '1';
-
-        return {
-            'X-Empresa-ID': empresaId,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        };
-    };
-
-    // Função para requisições API
-    const apiRequest = async (url, options = {}) => {
-        const headers = getHeaders();
-
-        const config = {
-            ...options,
-            headers: {
-                ...headers,
-                ...options.headers
-            }
-        };
-
-        console.log('=== REQUISIÇÃO API ANDAMENTOS ===');
-        console.log('URL:', url);
-        console.log('Headers:', config.headers);
-        console.log('Method:', config.method || 'GET');
-
-        try {
-            const response = await fetch(url, config);
-
-            console.log('Response status:', response.status);
-            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
-            // Verificar se a resposta é JSON
-            const contentType = response.headers.get('content-type');
-            console.log('Content-Type:', contentType);
-
-            if (!contentType || !contentType.includes('application/json')) {
-                const textResponse = await response.text();
-                console.log('Response text (não JSON):', textResponse.substring(0, 500));
-
-                let errorMessage = 'Erro no servidor';
-                if (response.status === 404) {
-                    errorMessage = 'API não encontrada (404). Verifique se o XAMPP está rodando e o arquivo existe em: C:\\xampp\\htdocs\\Atendimentos\\backend\\api\\andamentos.php';
-                } else if (response.status === 500) {
-                    errorMessage = 'Erro interno do servidor (500)';
-                } else if (response.status === 403) {
-                    errorMessage = 'Acesso negado (403)';
-                } else if (response.status === 0) {
-                    errorMessage = 'Erro de CORS ou servidor não acessível. Verifique se o XAMPP está rodando.';
-                }
-
-                throw new Error(errorMessage);
-            }
-
-            const data = await response.json();
-            console.log('Response data:', data);
-
-            if (!response.ok) {
-                throw new Error(data.message || data.error || `HTTP ${response.status}`);
-            }
-
-            return data;
-        } catch (error) {
-            console.error('Erro na requisição:', error);
-
-            // Tratamento específico para erros de rede
-            if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                throw new Error('Erro de conexão. Verifique se o XAMPP está rodando na porta 80.');
-            }
-
-            throw error;
-        }
-    };
+    // Use shared apiRequest from utils to get standardized headers and runtime base
 
     // Carregar dados
     const fetchData = async () => {
