@@ -56,7 +56,7 @@
 }
 .empresa-nome-logo.selected {
     opacity: 1;
-    font-weight: 600;
+    font-weight: bold !important;
 }
 /* --- ESTILO GERAL DO CONTAINER --- */
 .dashboard-container {
@@ -307,7 +307,7 @@
     font-weight: 600;
     padding: 12px 15px;
     font-size: 13px;
-    text-align: left;
+    text-align: center;
     border-bottom: 2px solid #e9ecef;
     text-transform: uppercase;
 }
@@ -318,6 +318,7 @@
     color: #495057;
     font-size: 14px;
     vertical-align: middle;
+    text-align: center;
 }
 
 .dashboard-table tbody tr:hover {
