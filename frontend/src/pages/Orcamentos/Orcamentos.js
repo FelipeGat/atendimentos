@@ -203,8 +203,33 @@ const ViewModal = ({ orcamento, loading, onClose, handleEdit, getUsuarioNome, ge
                                     </div>
                                 )}
                                 {activeTab === 'anexos' && (
-                                    <div className="tab-anexos"><p>Funcionalidade de anexos será implementada aqui.</p></div>
+                                    <div className="tab-anexos">
+                                        {orcamento.fotos && orcamento.fotos.length > 0 ? (
+                                            <div className="tab-anexos-grid">
+                                                {orcamento.fotos.map((foto) => (
+                                                    <div key={foto.id} className="tab-anexo-card">
+                                                        <img
+                                                            src={`${process.env.REACT_APP_IMG_BASE_URL.replace(/\/+$/, '')}/${foto.caminho.replace(/^uploads\//, '')}`}
+                                                            alt="Anexo"
+                                                        />
+                                                        <a
+                                                            href={`${process.env.REACT_APP_IMG_BASE_URL.replace(/\/+$/, '')}/${foto.caminho.replace(/^uploads\//, '')}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                        >
+                                                            Baixar
+                                                        </a>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-center text-gray-500">Nenhum anexo encontrado para este orçamento.</p>
+                                        )}
+                                    </div>
                                 )}
+
+
+
                             </div>
                         </>
                     )}
@@ -212,7 +237,7 @@ const ViewModal = ({ orcamento, loading, onClose, handleEdit, getUsuarioNome, ge
 
                 <div className="modal-actions">
                     <button className="btn btn-secondary" onClick={onClose}>Fechar</button>
-                    <button className="btn btn-outline" onClick={() => handleEdit(orcamento)} disabled={loading}><Edit size={16} /> Editar</button>
+                    <button className="btn btn-outline" onClick={() => handleEdit(orcamento.id)} disabled={loading}><Edit size={16} /> Editar</button>
                     {/* O botão de impressão agora chama handleDownloadPDF do componente pai */}
                     <button className="btn btn-primary" onClick={() => handleDownloadPDF(orcamento, empresa)} disabled={loading} > <Printer size={16} /> Imprimir PDF </button>
                 </div>
@@ -359,9 +384,19 @@ const OrcamentosRefatorado = () => {
         setShowModal(true);
     };
 
-    const handleEdit = (orcamento) => {
-        setEditingOrcamento(orcamento);
-        setShowModal(true);
+    const handleEdit = async (orcamentoId) => {
+        try {
+            const data = await orcamentosAPI.buscar(orcamentoId);
+
+            if (data.success) {
+                setEditingOrcamento(data.data);
+                setShowModal(true);
+            } else {
+                alert("Erro ao buscar orçamento: " + data.message);
+            }
+        } catch (err) {
+            console.error("Erro ao carregar orçamento:", err);
+        }
     };
 
     const handleView = useCallback(async (orcamento) => {
@@ -756,7 +791,7 @@ const OrcamentosRefatorado = () => {
                                                     </button>
                                                     <button
                                                         className="action-btn edit"
-                                                        onClick={() => handleEdit(orcamento)}
+                                                        onClick={() => handleEdit(orcamento.id)}
                                                         title="Editar"
                                                     >
                                                         <Edit size={16} />
@@ -811,7 +846,7 @@ const OrcamentosRefatorado = () => {
                                             </button>
                                             <button
                                                 className="action-btn edit"
-                                                onClick={() => handleEdit(orcamento)}
+                                                onClick={() => handleEdit(orcamento.id)}
                                                 title="Editar"
                                             >
                                                 <Edit size={16} />
@@ -848,16 +883,27 @@ const OrcamentosRefatorado = () => {
                 </div>
             )}
 
-            {/* Modal de Formulário de Orçamento */}
             {showModal && (
-                <FormularioOrcamento
-                    orcamento={editingOrcamento}
-                    onSave={handleSave}
-                    onCancel={handleCancel}
-                    clientes={clientes}
-                    empresas={empresas}
-                    usuarios={usuarios}
-                />
+                <div className="modal-overlay" onClick={handleCancel}>
+                    <div
+                        className="modal-content-large"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="modal-header">
+                            <h2>{editingOrcamento ? "Editar Orçamento" : "Novo Orçamento"}</h2>
+                            <button onClick={handleCancel} className="btn-close">×</button>
+                        </div>
+
+                        <FormularioOrcamento
+                            orcamento={editingOrcamento}
+                            onSave={handleSave}
+                            onCancel={handleCancel}
+                            clientes={clientes}
+                            empresas={empresas}
+                            usuarios={usuarios}
+                        />
+                    </div>
+                </div>
             )}
 
             {/* Modal de Visualização de Orçamento */}

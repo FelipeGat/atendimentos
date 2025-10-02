@@ -8,33 +8,24 @@ if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
     exit();
 }
 
-// Incluir dependências
 require_once __DIR__ . "/../config/db.php";
 require_once "Orcamento.php";
 
-// NOVA FUNCIONALIDADE: Cache de requisições para prevenir duplicatas
 class RequestCache {
     private static $cache = [];
-    private static $timeout = 30; // 30 segundos
+    private static $timeout = 30;
     
     public static function isRequestProcessing($requestId) {
         if (empty($requestId)) return false;
-        
         $now = time();
-        
-        // Limpar cache expirado
         foreach (self::$cache as $id => $timestamp) {
             if ($now - $timestamp > self::$timeout) {
                 unset(self::$cache[$id]);
             }
         }
-        
-        // Verificar se a requisição já está sendo processada
         if (isset(self::$cache[$requestId])) {
             return true;
         }
-        
-        // Marcar requisição como em processamento
         self::$cache[$requestId] = $now;
         return false;
     }
@@ -46,7 +37,6 @@ class RequestCache {
     }
 }
 
-// Função para responder com sucesso
 function responderSucesso($mensagem, $dados = null, $codigo = 200) {
     http_response_code($codigo);
     $resposta = ["success" => true, "message" => $mensagem];
@@ -57,7 +47,6 @@ function responderSucesso($mensagem, $dados = null, $codigo = 200) {
     exit();
 }
 
-// Função para responder com erro
 function responderErro($mensagem, $codigo = 400) {
     http_response_code($codigo);
     echo json_encode([
@@ -68,111 +57,77 @@ function responderErro($mensagem, $codigo = 400) {
     exit();
 }
 
-// Função melhorada para validar cliente
 function validarCliente($cliente_id, $pdo) {
-    error_log("🔍 Validando cliente: " . var_export($cliente_id, true));
-    
-    // Converter para inteiro
     $cliente_id = intval($cliente_id);
-    
     if ($cliente_id <= 0) {
-        error_log("❌ Cliente inválido: " . $cliente_id);
         return ["valido" => false, "erro" => "Cliente é obrigatório"];
     }
-    
-    // Verificar se existe no banco
     try {
         $stmt = $pdo->prepare("SELECT id, nome FROM clientes WHERE id = ? AND removido_em IS NULL");
         $stmt->execute([$cliente_id]);
         $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
-        
         if (!$cliente) {
-            error_log("❌ Cliente não encontrado no banco: " . $cliente_id);
             return ["valido" => false, "erro" => "Cliente selecionado não existe ou foi removido"];
         }
-        
-        error_log("✅ Cliente validado: " . $cliente['nome']);
         return ["valido" => true, "cliente" => $cliente, "cliente_id" => $cliente_id];
     } catch (Exception $e) {
-        error_log("❌ Erro na validação do cliente: " . $e->getMessage());
         return ["valido" => false, "erro" => "Erro ao validar cliente: " . $e->getMessage()];
     }
 }
 
-// Função para obter empresa ID do header
-function obterEmpresaId() {
+function obterEmpresaId($data = null) {
+    if ($data !== null && isset($data['empresa_id']) && !empty($data['empresa_id'])) {
+        return $data['empresa_id'];
+    }
     $headers = getallheaders();
-    // Prioridade para o cabeçalho padrão
-    if (isset($headers['X-Empresa-ID'])) {
-        return $headers['X-Empresa-ID'];
-    }
-    if (isset($headers['x-empresa-id'])) {
-        return $headers['x-empresa-id'];
-    }
-    // Fallback para a variável $_SERVER (mais compatível)
-    if (isset($_SERVER['HTTP_X_EMPRESA_ID'])) {
-        return $_SERVER['HTTP_X_EMPRESA_ID'];
-    }
+    if (isset($headers['X-Empresa-ID'])) return $headers['X-Empresa-ID'];
+    if (isset($headers['x-empresa-id'])) return $headers['x-empresa-id'];
+    if (isset($_SERVER['HTTP_X_EMPRESA_ID'])) return $_SERVER['HTTP_X_EMPRESA_ID'];
     return null;
 }
 
-// Função para obter Request ID do header
 function obterRequestId() {
     $headers = getallheaders();
-    if (isset($headers['X-Request-ID'])) {
-        return $headers['X-Request-ID'];
-    }
-    if (isset($headers['x-request-id'])) {
-        return $headers['x-request-id'];
-    }
+    if (isset($headers['X-Request-ID'])) return $headers['X-Request-ID'];
+    if (isset($headers['x-request-id'])) return $headers['x-request-id'];
     return null;
 }
 
-// Inicialização
 $pdo = null;
 $orcamento = null;
 
 try {
     $pdo = getConnection();
-    if (!$pdo) {
-        throw new Exception("Não foi possível obter a conexão PDO.");
-    }
+    if (!$pdo) throw new Exception("Não foi possível obter a conexão PDO.");
     $orcamento = new Orcamento($pdo);
 } catch (Exception $e) {
-    error_log("Erro na inicialização da API de orçamentos: " . $e->getMessage());
     responderErro("Erro interno do servidor", 500);
 }
 
-// Obter empresa ID e Request ID
 $empresa_id = obterEmpresaId();
 $request_id = obterRequestId();
 
-error_log("🚀 Nova requisição - Request ID: " . ($request_id ?: 'não fornecido') . ", Empresa ID: " . $empresa_id);
-
-// PROTEÇÃO: Verificar requisições duplicadas
 if ($request_id && RequestCache::isRequestProcessing($request_id)) {
-    error_log("⚠️ Requisição duplicada detectada: " . $request_id);
     responderErro("Requisição já está sendo processada", 409);
 }
 
 $request_method = $_SERVER["REQUEST_METHOD"];
+if ($request_method === 'POST' && isset($_GET['_method']) && strtoupper($_GET['_method']) === 'PUT') {
+    $request_method = 'PUT';
+}
 
 try {
     switch ($request_method) {
         case 'GET':
             if (isset($_GET["action"]) && $_GET["action"] == "kpis") {
-                try {
-                    $kpis_data = $orcamento->readKpis($empresa_id);
-                    responderSucesso("KPIs obtidos com sucesso", $kpis_data);
-                } catch (Exception $e) {
-                    error_log("Erro ao obter KPIs: " . $e->getMessage());
-                    responderErro("Erro ao obter KPIs: " . $e->getMessage(), 500);
-                }
-            } else if (isset($_GET["id"])) {
+                $kpis_data = $orcamento->readKpis($empresa_id);
+                responderSucesso("KPIs obtidos com sucesso", $kpis_data);
+            } 
+            else if (isset($_GET["id"])) {
                 try {
                     $id = $_GET["id"];
 
-                    // Buscar o orçamento principal
+                    // 📌 Buscar o orçamento principal
                     $stmt = $pdo->prepare("
                         SELECT o.*, e.nome AS empresa_nome, c.nome AS cliente_nome
                         FROM orcamentos o
@@ -183,12 +138,9 @@ try {
                     ");
                     $stmt->execute([$id]);
                     $orc_row = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if (!$orc_row) responderErro("Orçamento não encontrado", 404);
 
-                    if (!$orc_row) {
-                        responderErro("Orçamento não encontrado", 404);
-                    }
-
-                    // Buscar itens vinculados
+                    // 📌 Buscar itens vinculados
                     $stmtItens = $pdo->prepare("
                         SELECT id, orcamento_id, tipo_item, descricao, tipo_especifico, observacao, quantidade, valor_unitario, valor_total
                         FROM orcamentos_itens
@@ -209,203 +161,221 @@ try {
                         }
                     }
 
-                    // Preparar retorno
+                    // 📌 Buscar fotos vinculadas ✅ (NOVO BLOCO)
+                    $stmtFotos = $pdo->prepare("
+                        SELECT id, caminho, nome_arquivo, criado_em
+                        FROM orcamentos_fotos
+                        WHERE orcamento_id = ?
+                        ORDER BY id ASC
+                    ");
+                    $stmtFotos->execute([$id]);
+                    $fotos = $stmtFotos->fetchAll(PDO::FETCH_ASSOC);
+
+                    // 📤 Preparar retorno
                     $orcamento_arr = $orc_row;
                     $orcamento_arr['servicos'] = $servicos;
                     $orcamento_arr['materiais'] = $materiais;
+                    $orcamento_arr['fotos'] = $fotos; // <-- Aqui a mágica ✨
 
                     responderSucesso("Orçamento encontrado", $orcamento_arr);
                 } catch (Exception $e) {
-                    error_log("Erro ao buscar orçamento por ID: " . $e->getMessage());
                     responderErro("Erro ao buscar orçamento: " . $e->getMessage(), 500);
                 }
             } else {
-
-                try {
-        $empresa_id = obterEmpresaId(); 
-
-        $sql = "
-            SELECT 
-                o.id, o.numero_orcamento, o.valor_total, o.status, o.data_orcamento,
-                o.cliente_id, o.empresa_id, o.usuario_id, o.referencia,
-                c.nome AS cliente_nome,
-                e.nome_fantasia AS empresa_nome
-            FROM orcamentos o
-            LEFT JOIN clientes c ON o.cliente_id = c.id
-            LEFT JOIN empresas e ON o.empresa_id = e.id
-            WHERE o.removido_em IS NULL
-        ";
-        
-        $params = [];
-
-
-                    if (!empty($empresa_id)) {
-            $sql .= " AND o.empresa_id = ?";
-            $params[] = $empresa_id;
-        }
-
-                    $sql .= " ORDER BY o.data_orcamento DESC, o.id DESC";
-
-                    $stmt = $pdo->prepare($sql);
-                    $stmt->execute($params);
-                    $orcamentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-                    responderSucesso("Orçamentos listados com sucesso", $orcamentos);
-
-                } catch (Exception $e) {
-                    error_log("Erro ao listar orçamentos: " . $e->getMessage());
-                    responderErro("Erro ao listar orçamentos: " . $e->getMessage(), 500);
+                $empresa_id = obterEmpresaId(); 
+                $sql = "
+                    SELECT 
+                        o.id, o.numero_orcamento, o.valor_total, o.status, o.data_orcamento,
+                        o.cliente_id, o.empresa_id, o.usuario_id, o.referencia,
+                        c.nome AS cliente_nome,
+                        e.nome_fantasia AS empresa_nome
+                    FROM orcamentos o
+                    LEFT JOIN clientes c ON o.cliente_id = c.id
+                    LEFT JOIN empresas e ON o.empresa_id = e.id
+                    WHERE o.removido_em IS NULL
+                ";
+                $params = [];
+                if (!empty($empresa_id)) {
+                    $sql .= " AND o.empresa_id = ?";
+                    $params[] = $empresa_id;
                 }
+                $sql .= " ORDER BY o.data_orcamento DESC, o.id DESC";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
+                $orcamentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                responderSucesso("Orçamentos listados com sucesso", $orcamentos);
             }
             break;
 
-        case 'POST':
+        case 'POST': // Criar orçamento + fotos
             try {
-                error_log("📝 INICIO POST ORCAMENTO - Request ID: " . ($request_id ?: 'N/A'));
-                
-                // Decodificar dados JSON
-                $input = file_get_contents("php://input");
-                $data = json_decode($input, true);
-                
-                if (!$data) {
-                    $data = $_POST;
-                }
+                $data = $_POST;
+                if (!$data) $data = json_decode(file_get_contents("php://input"), true);
 
-                error_log("📊 Dados recebidos: " . json_encode([
-                    'cliente_id' => $data["cliente_id"] ?? 'não fornecido',
-                    'numero_orcamento' => $data["numero_orcamento"] ?? 'não fornecido',
-                    'request_id' => $request_id
-                ]));
+                $empresa_id_requisicao = obterEmpresaId($data);
+                if (empty($empresa_id_requisicao)) responderErro("Empresa é obrigatória", 400);
 
-                // VALIDAÇÃO DO CLIENTE
                 $validacao_cliente = validarCliente($data["cliente_id"] ?? null, $pdo);
-                
-                if (!$validacao_cliente["valido"]) {
-                    error_log("❌ ERRO DE VALIDAÇÃO: " . $validacao_cliente["erro"]);
-                    // Liberar cache da requisição antes de responder erro
-                    if ($request_id) {
-                        RequestCache::releaseRequest($request_id);
-                    }
-                    responderErro($validacao_cliente["erro"], 400);
-                }
+                if (!$validacao_cliente["valido"]) responderErro($validacao_cliente["erro"], 400);
 
-                // Cliente validado com sucesso
                 $cliente_id = $validacao_cliente["cliente_id"];
                 $cliente_info = $validacao_cliente["cliente"];
-                
-                error_log("✅ Cliente validado: ID=" . $cliente_id . ", Nome=" . $cliente_info['nome']);
 
-                // Definir propriedades do orçamento
-                $orcamento->empresa_id = $empresa_id;
+                // Propriedades do orçamento
+                $orcamento->empresa_id = $empresa_id_requisicao;
                 $orcamento->cliente_id = $cliente_id;
                 $orcamento->usuario_id = $data["usuario_id"] ?? 1;
                 $orcamento->referencia = $data["referencia"] ?? null;
                 $orcamento->data_orcamento = $data["data_orcamento"] ?? date("Y-m-d");
-                $orcamento->validade_orcamento = $data["validade_orcamento"] ?? null;
-                $orcamento->prazo_inicio = $data["prazo_inicio"] ?? null;
-                $orcamento->prazo_duracao = $data["prazo_duracao"] ?? null;
-                $orcamento->observacoes = $data["observacoes"] ?? null;
-                $orcamento->imposto_percentual = $data["imposto_percentual"] ?? 0;
-                $orcamento->frete = $data["frete"] ?? 0;
-                $orcamento->desconto_valor = $data["desconto_valor"] ?? 0;
-                $orcamento->desconto_percentual = $data["desconto_percentual"] ?? 0;
-                $orcamento->tipo_desconto = $data["tipo_desconto"] ?? "valor";
-                $orcamento->condicoes_pagamento = $data["condicoes_pagamento"] ?? null;
-                $orcamento->meios_pagamento = $data["meios_pagamento"] ?? null;
-                $orcamento->anotacoes_internas = $data["anotacoes_internas"] ?? null;
                 $orcamento->valor_total = $data["valor_total"] ?? 0;
                 $orcamento->status = "Rascunho";
+                $orcamento->numero_orcamento = empty($data["numero_orcamento"]) ?
+                    $orcamento->getAndIncrementNextNumeroOrcamento($empresa_id_requisicao) :
+                    $data["numero_orcamento"];
 
-                // Gerar número do orçamento
-                if (empty($data["numero_orcamento"])) {
-                    // Gerar número do orçamento sequencial por empresa e incrementar contador
-                    $orcamento->numero_orcamento = $orcamento->getAndIncrementNextNumeroOrcamento($orcamento->empresa_id);
-                } else {
-                    $orcamento->numero_orcamento = $data["numero_orcamento"];
-                }
-
-                // Tentar criar o orçamento
                 if ($orcamento->create()) {
-                    error_log("✅ Orçamento criado com sucesso. ID: " . $orcamento->id);
-                    
-                    // Processar itens se existirem
-                    if (isset($data["servicos"]) && is_array($data["servicos"])) {
-                        foreach ($data["servicos"] as $servico_data) {
-                            if (method_exists($orcamento, 'createItem')) {
-                                $orcamento->createItem(array_merge($servico_data, [
-                                    "orcamento_id" => $orcamento->id, 
-                                    "tipo_item" => "Servico"
-                                ]));
-                            }
-                        }
-                    }
-                    
-                    if (isset($data["materiais"]) && is_array($data["materiais"])) {
-                        foreach ($data["materiais"] as $material_data) {
-                            if (method_exists($orcamento, 'createItem')) {
-                                $orcamento->createItem(array_merge($material_data, [
-                                    "orcamento_id" => $orcamento->id, 
-                                    "tipo_item" => "Material"
-                                ]));
+                    $orcamento_id = $orcamento->id;
+
+                    // Salvar fotos
+                    $upload_dir = __DIR__ . "/../uploads/";
+                    if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
+
+                    if (isset($_FILES['fotos_novas'])) {
+                        $files_array = $_FILES['fotos_novas'];
+                        for ($i = 0; $i < count($files_array['name']); $i++) {
+                            if ($files_array['error'][$i] === UPLOAD_ERR_OK) {
+                                $nome_original = $files_array['name'][$i];
+                                $tmp_name = $files_array['tmp_name'][$i];
+                                $extensao = pathinfo($nome_original, PATHINFO_EXTENSION);
+                                $nome_unico = "orc_{$orcamento_id}_" . uniqid() . "." . strtolower($extensao);
+                                $destino = $upload_dir . $nome_unico;
+                                if (move_uploaded_file($tmp_name, $destino)) {
+                                    $stmtFoto = $pdo->prepare("
+                                        INSERT INTO orcamentos_fotos (orcamento_id, caminho, nome_arquivo, criado_em)
+                                        VALUES (?, ?, ?, NOW())
+                                    ");
+                                    $stmtFoto->execute([$orcamento_id, "uploads/" . $nome_unico, $nome_original]);
+                                }
                             }
                         }
                     }
 
-                    // Liberar cache da requisição
-                    if ($request_id) {
-                        RequestCache::releaseRequest($request_id);
-                    }
-
-                    error_log("🎉 SUCESSO COMPLETO - Request ID: " . ($request_id ?: 'N/A'));
                     responderSucesso("Orçamento criado com sucesso", [
-                        "id" => $orcamento->id, 
+                        "id" => $orcamento_id,
                         "numero_orcamento" => $orcamento->numero_orcamento,
                         "cliente_nome" => $cliente_info['nome']
                     ]);
                 } else {
-                    error_log("❌ ERRO: Falha ao criar orçamento na classe");
-                    if ($request_id) {
-                        RequestCache::releaseRequest($request_id);
-                    }
                     responderErro("Erro ao criar orçamento", 500);
                 }
             } catch (Exception $e) {
-                error_log("❌ ERRO GERAL: " . $e->getMessage());
-                if ($request_id) {
-                    RequestCache::releaseRequest($request_id);
-                }
                 responderErro("Erro ao processar criação: " . $e->getMessage(), 500);
             }
             break;
 
-        case 'PUT':
+       case 'PUT':
     try {
+        error_log("📝 INICIO PUT ORCAMENTO (Multi-Foto) - ID: " . ($_GET["id"] ?? 'N/A'));
+        
         if (!isset($_GET["id"])) {
             responderErro("ID do orçamento é obrigatório", 400);
         }
 
         $orcamento_id = $_GET["id"];
-
-        $input = file_get_contents("php://input");
-        $data = json_decode($input, true);
+        $data = $_POST;
+        
         if (!$data) {
-            $data = $_POST;
+            responderErro("Dados de requisição inválidos", 400);
+        }
+        
+        // =======================================================
+        // 🚨 NOVO BLOCO DE LÓGICA DE UPLOAD DE MÚLTIPLAS FOTOS
+        // =======================================================
+        
+        $upload_dir = __DIR__ . "/../uploads/";
+        if (!is_dir($upload_dir)) {
+            mkdir($upload_dir, 0777, true);
         }
 
-        // ✅ Validação do cliente
+        $fotos_salvas = [];
+
+        // 1. Processar novas fotos enviadas
+        // O PHP converte o array `fotos_novas[]` em uma estrutura diferente para múltiplos uploads
+        if (isset($_FILES['fotos_novas'])) {
+            $files_array = $_FILES['fotos_novas'];
+            
+            // Loop para iterar sobre os múltiplos arquivos enviados
+            for ($i = 0; $i < count($files_array['name']); $i++) {
+                if ($files_array['error'][$i] === UPLOAD_ERR_OK) {
+                    
+                    $nome_original = $files_array['name'][$i];
+                    $tmp_name = $files_array['tmp_name'][$i];
+                    $extensao = pathinfo($nome_original, PATHINFO_EXTENSION);
+                    
+                    // Cria um nome de arquivo único
+                    $nome_arquivo_unico = 'orc_' . $orcamento_id . '_' . uniqid() . '.' . strtolower($extensao);
+                    $destino = $upload_dir . $nome_arquivo_unico;
+
+                    if (move_uploaded_file($tmp_name, $destino)) {
+                        $caminho_db = 'uploads/' . $nome_arquivo_unico;
+                        $fotos_salvas[] = [
+                            'caminho' => $caminho_db,
+                            'nome_arquivo' => $nome_original
+                        ];
+                        error_log("✅ Foto #" . ($i + 1) . " movida. Caminho DB: " . $caminho_db);
+                    } else {
+                        error_log("❌ ERRO: Falha ao mover arquivo de upload para: " . $destino);
+                    }
+                }
+            }
+        }
+
+        // 2. Gerenciar fotos existentes (Remover as que foram excluídas no frontend)
+        $fotos_existentes_ids = json_decode($data["fotos_existentes"] ?? '[]', true) ?: [];
+
+        // DELETE: Fotos existentes no DB, mas que NÃO estão na lista 'fotos_existentes' enviada
+        if (!empty($fotos_existentes_ids)) {
+            $placeholders = implode(',', array_fill(0, count($fotos_existentes_ids), '?'));
+            $sql_delete_antigas = "DELETE FROM orcamentos_fotos WHERE orcamento_id = ? AND id NOT IN ({$placeholders})";
+            $params_delete_antigas = array_merge([$orcamento_id], $fotos_existentes_ids);
+            
+            $stmt_delete_antigas = $pdo->prepare($sql_delete_antigas);
+            $stmt_delete_antigas->execute($params_delete_antigas);
+        } else {
+             // Se nenhuma foto existente foi enviada, deletar todas as antigas
+             $pdo->prepare("DELETE FROM orcamentos_fotos WHERE orcamento_id = ?")->execute([$orcamento_id]);
+        }
+
+
+        // 3. Inserir as novas fotos salvas no banco de dados
+        $stmt_insert_foto = $pdo->prepare("
+            INSERT INTO orcamentos_fotos (orcamento_id, caminho, nome_arquivo, criado_em)
+            VALUES (:orcamento_id, :caminho, :nome_arquivo, NOW())
+        ");
+        foreach ($fotos_salvas as $foto) {
+            $stmt_insert_foto->execute([
+                ':orcamento_id' => $orcamento_id,
+                ':caminho' => $foto['caminho'],
+                ':nome_arquivo' => $foto['nome_arquivo']
+            ]);
+        }
+
+        // =======================================================
+        // 🚨 FIM DO BLOCO DE FOTO
+        // =======================================================
+
+        // ✅ Validação do cliente (MANTIDA)
         $validacao_cliente = validarCliente($data["cliente_id"] ?? null, $pdo);
         if (!$validacao_cliente["valido"]) {
-            if ($request_id) {
-                RequestCache::releaseRequest($request_id);
-            }
+            // Se estiver usando RequestCache, adicione aqui o RequestCache::releaseRequest($request_id);
             responderErro($validacao_cliente["erro"], 400);
         }
 
         $cliente_id = $validacao_cliente["cliente_id"];
         $cliente_info = $validacao_cliente["cliente"];
 
-        // ✅ Atualizar dados principais do orçamento
-        $stmt = $pdo->prepare("
+        // 4. Update da Tabela Principal de Orçamentos (MANTIDA, SEM CAMPO 'caminho_foto')
+        $sql_update = "
             UPDATE orcamentos SET
                 cliente_id = :cliente_id,
                 usuario_id = :usuario_id,
@@ -427,10 +397,11 @@ try {
                 status = :status,
                 atualizado_em = NOW()
             WHERE id = :id
-        ");
-        $stmt->execute([
+        ";
+        
+        $params = [
             ':cliente_id' => $cliente_id,
-            ':usuario_id' => $data["usuario_id"] ?? 1,
+            ':usuario_id' => $data["usuario_id"] ?? 1, // Ajuste se tiver login
             ':referencia' => $data["referencia"] ?? null,
             ':data_orcamento' => $data["data_orcamento"] ?? date("Y-m-d"),
             ':validade_orcamento' => $data["validade_orcamento"] ?? null,
@@ -448,65 +419,66 @@ try {
             ':valor_total' => $data["valor_total"] ?? 0,
             ':status' => $data["status"] ?? "Rascunho",
             ':id' => $orcamento_id
-        ]);
+        ];
 
-        // ✅ Limpar itens antigos
+        $stmt = $pdo->prepare($sql_update);
+        $stmt->execute($params);
+
+        // 5. Regravar Serviços e Materiais (MANTIDO)
+        $servicos_json = $data["servicos"] ?? '[]';
+        $materiais_json = $data["materiais"] ?? '[]';
+        $servicos_data = json_decode($servicos_json, true) ?: [];
+        $materiais_data = json_decode($materiais_json, true) ?: [];
+        
+        // Limpeza dos itens antigos
         $pdo->prepare("DELETE FROM orcamentos_itens WHERE orcamento_id = ?")->execute([$orcamento_id]);
 
-        // ✅ Regravar serviços se existirem
-        if (isset($data["servicos"]) && is_array($data["servicos"])) {
-            $stmtServico = $pdo->prepare("
-                INSERT INTO orcamentos_itens
-                (orcamento_id, tipo_item, descricao, tipo_especifico, observacao, quantidade, valor_unitario, valor_total, criado_em)
-                VALUES
-                (:orcamento_id, 'Servico', :descricao, :tipo_especifico, :observacao, :quantidade, :valor_unitario, :valor_total, NOW())
-            ");
-            foreach ($data["servicos"] as $servico) {
-                $stmtServico->execute([
-                    ':orcamento_id' => $orcamento_id,
-                    ':descricao' => $servico["descricao"] ?? '',
-                    ':tipo_especifico' => $servico["tipo_especifico"] ?? null,
-                    ':observacao' => $servico["observacao"] ?? null,
-                    ':quantidade' => $servico["quantidade"] ?? 1,
-                    ':valor_unitario' => $servico["valor_unitario"] ?? 0,
-                    ':valor_total' => $servico["valor_total"] ?? 0
-                ]);
-            }
+        // Regravar serviços 
+        $stmtServico = $pdo->prepare("
+            INSERT INTO orcamentos_itens
+            (orcamento_id, tipo_item, descricao, tipo_especifico, observacao, quantidade, valor_unitario, valor_total, criado_em)
+            VALUES
+            (:orcamento_id, 'Servico', :descricao, :tipo_especifico, :observacao, :quantidade, :valor_unitario, :valor_total, NOW())
+        ");
+        foreach ($servicos_data as $servico) {
+            $stmtServico->execute([
+                ':orcamento_id' => $orcamento_id,
+                ':descricao' => $servico["descricao"] ?? '',
+                ':tipo_especifico' => $servico["tipo_especifico"] ?? null,
+                ':observacao' => $servico["observacao"] ?? null,
+                ':quantidade' => $servico["quantidade"] ?? 1,
+                ':valor_unitario' => $servico["valor_unitario"] ?? 0,
+                ':valor_total' => $servico["valor_total"] ?? 0
+            ]);
         }
 
-        // ✅ Regravar materiais se existirem
-        if (isset($data["materiais"]) && is_array($data["materiais"])) {
-            $stmtMaterial = $pdo->prepare("
-                INSERT INTO orcamentos_itens
-                (orcamento_id, tipo_item, descricao, tipo_especifico, observacao, quantidade, valor_unitario, valor_total, criado_em)
-                VALUES
-                (:orcamento_id, 'Material', :descricao, :tipo_especifico, :observacao, :quantidade, :valor_unitario, :valor_total, NOW())
-            ");
-            foreach ($data["materiais"] as $material) {
-                $stmtMaterial->execute([
-                    ':orcamento_id' => $orcamento_id,
-                    ':descricao' => $material["descricao"] ?? '',
-                    ':tipo_especifico' => $material["tipo_especifico"] ?? null,
-                    ':observacao' => $material["observacao"] ?? null,
-                    ':quantidade' => $material["quantidade"] ?? 1,
-                    ':valor_unitario' => $material["valor_unitario"] ?? 0,
-                    ':valor_total' => $material["valor_total"] ?? 0
-                ]);
-            }
+        // Regravar materiais
+        $stmtMaterial = $pdo->prepare("
+            INSERT INTO orcamentos_itens
+            (orcamento_id, tipo_item, descricao, tipo_especifico, observacao, quantidade, valor_unitario, valor_total, criado_em)
+            VALUES
+            (:orcamento_id, 'Material', :descricao, :tipo_especifico, :observacao, :quantidade, :valor_unitario, :valor_total, NOW())
+        ");
+        foreach ($materiais_data as $material) {
+            $stmtMaterial->execute([
+                ':orcamento_id' => $orcamento_id,
+                ':descricao' => $material["descricao"] ?? '',
+                ':tipo_especifico' => $material["tipo_especifico"] ?? null,
+                ':observacao' => $material["observacao"] ?? null,
+                ':quantidade' => $material["quantidade"] ?? 1,
+                ':valor_unitario' => $material["valor_unitario"] ?? 0,
+                ':valor_total' => $material["valor_total"] ?? 0
+            ]);
         }
 
-        if ($request_id) {
-            RequestCache::releaseRequest($request_id);
-        }
-
-        responderSucesso("Orçamento atualizado com sucesso", [
+        error_log("🎉 SUCESSO PUT ORCAMENTO - ID: " . $orcamento_id . ". Fotos salvas: " . count($fotos_salvas));
+        responderSucesso("Orçamento e fotos atualizados com sucesso", [
             "id" => $orcamento_id,
             "cliente_nome" => $cliente_info['nome']
         ]);
+
     } catch (Exception $e) {
-        if ($request_id) {
-            RequestCache::releaseRequest($request_id);
-        }
+        error_log("❌ ERRO GERAL NO PUT: " . $e->getMessage());
         responderErro("Erro ao atualizar orçamento: " . $e->getMessage(), 500);
     }
     break;

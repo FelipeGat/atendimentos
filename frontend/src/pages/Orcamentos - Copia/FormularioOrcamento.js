@@ -1,20 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    Building2,
-    Users,
-    Calendar,
-    Calculator,
-    FileText,
-    Plus,
-    Trash2,
-    Upload,
-    Image,
-    Wrench,
-    Package,
-    Save,
-    X,
-    CheckCircle,
-    Edit
+    Building2, Users, Calendar, Calculator, FileText, Plus, Trash2, Upload,
+    Image, Wrench, Package, Save, X, CheckCircle, Edit
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './FormularioOrcamento.css';
@@ -168,9 +155,15 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
         if (orcamento && orcamento.id) {
             console.log('Orçamento recebido para edição:', orcamento);
 
+            const clienteEncontrado = clientes.find(c => c.id === orcamento.cliente_id);
+
             const dadosIniciais = {
                 ...formData,
                 ...orcamento,
+                cliente_id: orcamento.cliente_id || '',
+                clienteBusca: clienteEncontrado
+                    ? (clienteEncontrado.nome_fantasia || clienteEncontrado.razao_social || clienteEncontrado.nome)
+                    : '',
                 data_orcamento: orcamento.data_orcamento?.split(' ')[0] || new Date().toISOString().split('T')[0],
                 validade_orcamento: orcamento.validade_orcamento?.split(' ')[0] || '',
                 prazo_inicio: orcamento.prazo_inicio?.split(' ')[0] || ''

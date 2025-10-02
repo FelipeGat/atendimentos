@@ -31,7 +31,7 @@ if (in_array($origin, $allowed_origins) ||
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, PATCH");
 
 // Permitir cabeçalhos específicos (expandindo a lista atual)
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With, Accept, Origin, Cache-Control, Pragma, X-Request-ID, x-request-id");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With, Accept, Origin, Cache-Control, Pragma, X-Request-ID, x-request-id, x-http-method-override");
 
 
 // Permitir credenciais (mantendo configuração atual)
