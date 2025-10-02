@@ -138,23 +138,49 @@ const Dashboard = () => {
         <div className="dashboard-container">
             <div className="dashboard-header">
                 <h1>Dashboard</h1>
-                {/* NOVO: Seletor de empresas */}
-                <div className="dashboard-filters">
-                    <label htmlFor="empresa-select" className="sr-only">Filtrar por Empresa:</label>
-                    <select
-                        id="empresa-select"
-                        value={empresaIdSelecionada || ''}
-                        onChange={(e) => setEmpresaIdSelecionada(e.target.value)}
-                        disabled={empresas.length === 0}
-                    >
-                        {empresas.length > 0 ? (
-                            empresas.map(empresa => (
-                                <option key={empresa.id} value={empresa.id}>{empresa.nome}</option>
-                            ))
-                        ) : (
-                            <option value="">Nenhuma empresa encontrada</option>
-                        )}
-                    </select>
+                {/* NOVO: Seletor visual de empresas por logo */}
+                <div className="dashboard-filters dashboard-logos">
+                    {empresas.length > 0 ? (
+                        <>
+                        {empresas.map(empresa => {
+                            let logoSrc = null;
+                            let borderColor = '#1e88e5';
+                            if (empresa.nome.toLowerCase().includes('delta')) {
+                                logoSrc = require('../../assets/delta.png');
+                                borderColor = '#354F2A';
+                            } else if (empresa.nome.toLowerCase().includes('gw')) {
+                                logoSrc = require('../../assets/gw-logo.jpg');
+                                borderColor = '#2e3486';
+                            } else if (empresa.nome.toLowerCase().includes('invest')) {
+                                logoSrc = require('../../assets/invest.jpg');
+                                borderColor = '#0A3D62';
+                            } else {
+                                logoSrc = require('../../assets/login-illustration.png');
+                                borderColor = '#1e88e5';
+                            }
+                            const isSelected = empresaIdSelecionada == empresa.id;
+                            return (
+                                <div key={empresa.id} className="empresa-logo-col">
+                                    <button
+                                        className={`empresa-logo-btn${isSelected ? ' selected' : ''}`}
+                                        onClick={() => setEmpresaIdSelecionada(empresa.id)}
+                                        style={isSelected ? { borderColor: borderColor, boxShadow: `0 0 0 3px ${borderColor}33` } : {}}
+                                    >
+                                        <img src={logoSrc} alt={empresa.nome} className="empresa-logo-img" />
+                                    </button>
+                                    <span
+                                        className={`empresa-nome-logo${isSelected ? ' selected' : ''}`}
+                                        style={isSelected ? { color: borderColor } : {}}
+                                    >
+                                        {(isSelected || undefined) ? empresa.nome : ''}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                        </>
+                    ) : (
+                        <span>Nenhuma empresa encontrada</span>
+                    )}
                 </div>
             </div>
 
