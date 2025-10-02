@@ -94,8 +94,13 @@
 
 .menu {
     flex-grow: 1;
-    overflow-y: auto;
     padding: 0 15px;
+    overflow-y: visible;
+}
+
+.sidebar.collapsed .menu {
+    overflow-y: auto;
+    padding: 0;
 }
 
 .menu-section h4 {
@@ -123,17 +128,26 @@
 .menu li a {
     display: flex;
     align-items: center;
-    padding: 12px 10px;
+    padding: 12px 15px;
     border-radius: 6px;
     color: white;
     text-decoration: none;
     margin: 5px 0;
     gap: 15px;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
     white-space: nowrap;
     /* Impede que o texto quebre linha */
     overflow: hidden;
     /* Esconde o texto que transborda */
+}
+
+/* Ajuste do tamanho dos ícones */
+.menu li a svg {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    margin-left: 0;
+    transition: margin-left 0.3s ease;
 }
 
 .menu li a:hover {
@@ -156,10 +170,34 @@
     width: 0;
 }
 
+.sidebar.collapsed .menu {
+    padding: 0;
+}
+
 .sidebar.collapsed .menu li a {
+    display: flex;
+    align-items: center;
     justify-content: center;
-    /* Centraliza o ícone */
-    padding: 12px;
+    width: 80px;
+    height: 48px;
+    padding: 0;
+    margin: 5px auto;
+    background: none;
+    gap: 0;
+}
+
+.sidebar:not(.collapsed) .menu li a {
+    height: auto;
+    padding: 12px 15px;
+    margin: 5px 0;
+    width: 100%;
+}
+
+.sidebar.collapsed .menu li a svg {
+    width: 28px;
+    height: 28px;
+    margin: auto;
+    display: block;
 }
 
 .user-avatar {
