@@ -985,3 +985,61 @@ body {
     border: none;
     cursor: pointer;
 }
+
+/* ===== GRID DE ANEXOS ===== */
+.tab-anexos-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    /* 🔥 Sempre 3 colunas */
+    gap: 1.5rem;
+    padding: 1.5rem;
+}
+
+.tab-anexo-card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tab-anexo-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.tab-anexo-card img {
+    width: 100%;
+    height: 180px;
+    /* 🔥 Altura padrão */
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+}
+
+.tab-anexo-card a {
+    color: var(--orcamento-secondary);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.tab-anexo-card a:hover {
+    text-decoration: underline;
+}
+
+/* Responsividade */
+@media (max-width: 992px) {
+    .tab-anexos-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .tab-anexos-grid {
+        grid-template-columns: 1fr;
+    }
+}

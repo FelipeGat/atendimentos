@@ -1,20 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    Building2,
-    Users,
-    Calendar,
-    Calculator,
-    FileText,
-    Plus,
-    Trash2,
-    Upload,
-    Image,
-    Wrench,
-    Package,
-    Save,
-    X,
-    CheckCircle,
-    Edit
+    Building2, Users, Calendar, Calculator, FileText, Plus, Trash2, Upload,
+    Image, Wrench, Package, Save, X, CheckCircle, Edit
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './FormularioOrcamento.css';
@@ -67,8 +54,13 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
     }]);
 
     // Estados para fotos
-    const [fotos, setFotos] = useState([]);
-    const [fotosPreview, setFotosPreview] = useState([]);
+    const [fotosNovas, setFotosNovas] = useState([]); // Arquivos File para upload
+    const [fotosExistentes, setFotosExistentes] = useState([]); // URLs de fotos já salvas
+    const [fotosPreview, setFotosPreview] = useState([]); // URLs para pré-visualização (novas e existentes)
+
+    // Variáveis de ambiente para URLs de imagens
+    const IMG_BASE_URL = process.env.REACT_APP_IMG_BASE_URL;
+
 
     // Estados de controle
     const [loading, setLoading] = useState(false);
@@ -168,9 +160,15 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
         if (orcamento && orcamento.id) {
             console.log('Orçamento recebido para edição:', orcamento);
 
+            const clienteEncontrado = clientes.find(c => c.id === orcamento.cliente_id);
+
             const dadosIniciais = {
                 ...formData,
                 ...orcamento,
+                cliente_id: orcamento.cliente_id || '',
+                clienteBusca: clienteEncontrado
+                    ? (clienteEncontrado.nome_fantasia || clienteEncontrado.razao_social || clienteEncontrado.nome)
+                    : '',
                 data_orcamento: orcamento.data_orcamento?.split(' ')[0] || new Date().toISOString().split('T')[0],
                 validade_orcamento: orcamento.validade_orcamento?.split(' ')[0] || '',
                 prazo_inicio: orcamento.prazo_inicio?.split(' ')[0] || ''
@@ -206,10 +204,23 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
             }
             setMateriais(materiaisCarregados.length > 0 ? materiaisCarregados : [{ id: Date.now(), material: '', detalhes: '', preco_unitario: 0, quantidade: 1, desconto: 0, valor_total: 0 }]);
 
+            // Carregar fotos existentes
+            let fotosExistentesCarregadas = [];
+            if (orcamento.fotos && Array.isArray(orcamento.fotos)) {
+                fotosExistentesCarregadas = orcamento.fotos.map(foto => ({
+                    id: foto.id,
+                    url: `${IMG_BASE_URL}/${foto.caminho}`,
+                    name: foto.nome_arquivo || `foto-${foto.id}`
+                }));
+            }
+            setFotosExistentes(fotosExistentesCarregadas);
+            setFotosPreview([...fotosExistentesCarregadas]);
+
             setInitialFormState(JSON.stringify({
                 formData: dadosIniciais,
                 servicos: servicosCarregados,
-                materiais: materiaisCarregados
+                materiais: materiaisCarregados,
+                fotosExistentes: fotosExistentesCarregadas
             }));
         }
     }, [orcamento]);
@@ -219,7 +230,8 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
             const currentState = JSON.stringify({
                 formData,
                 servicos,
-                materiais
+                materiais,
+                fotosExistentes
             });
             setHasUnsavedChanges(currentState !== initialFormState);
         }
@@ -305,15 +317,16 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
 
     const handleFileChange = (e) => {
         const files = Array.from(e.target.files);
-        setFotos(prev => [...prev, ...files]);
+        setFotosNovas(prev => [...prev, ...files]);
 
         files.forEach(file => {
             const reader = new FileReader();
             reader.onload = (e) => {
                 setFotosPreview(prev => [...prev, {
-                    id: Date.now() + Math.random(),
+                    id: `new-${Date.now() + Math.random()}`,
                     url: e.target.result,
-                    name: file.name
+                    name: file.name,
+                    fileObject: file // Armazenar o objeto File para remoção de novas fotos
                 }]);
             };
             reader.readAsDataURL(file);
@@ -321,7 +334,16 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
     };
 
     const removerFoto = (id) => {
-        setFotosPreview(fotosPreview.filter(foto => foto.id !== id));
+        // Se for uma foto nova (id começa com 'new-'), remove de fotosNovas
+        if (String(id).startsWith('new-')) {
+            const fotoRemover = fotosPreview.find(foto => foto.id === id);
+            if (fotoRemover && fotoRemover.fileObject) {
+                setFotosNovas(prev => prev.filter(file => file !== fotoRemover.fileObject));
+            }
+        } else { // Se for uma foto existente (id numérico), remove de fotosExistentes
+            setFotosExistentes(prev => prev.filter(foto => foto.id !== id));
+        }
+        setFotosPreview(prev => prev.filter(foto => foto.id !== id));
     };
 
     const validarFormulario = () => {
@@ -410,92 +432,92 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
 
             console.log('✅ Validações passaram - prosseguindo com envio');
 
-            const dataToSend = {
-                numero_orcamento: formData.numero_orcamento,
-                empresa_id: formData.empresa_id,
-                cliente_id: clienteIdNum,
-                referencia: formData.referencia,
-                data_orcamento: formData.data_orcamento,
-                validade_orcamento: formData.validade_orcamento,
-                prazo_inicio: formData.prazo_inicio,
-                prazo_duracao: formData.prazo_duracao,
-                observacoes: formData.observacoes,
-                imposto_percentual: formData.imposto_percentual,
-                frete: formData.frete,
-                desconto_valor: formData.desconto_valor,
-                desconto_percentual: formData.desconto_percentual,
-                tipo_desconto: formData.tipo_desconto,
-                condicoes_pagamento: formData.condicoes_pagamento,
-                meios_pagamento: formData.meios_pagamento,
-                anotacoes_internas: formData.anotacoes_internas,
-                valor_total: formData.valor_total,
-                status: formData.status,
-                servicos: servicos
-                    .filter(s => s.servico.trim())
-                    .map(s => ({
-                        descricao: s.servico,
-                        observacao: s.detalhes,
-                        valor_unitario: s.preco_unitario,
-                        quantidade: s.quantidade,
-                        valor_total: s.valor_total,
-                        tipo_especifico: s.servico
-                    })),
-                materiais: materiais
-                    .filter(m => m.material.trim())
-                    .map(m => ({
-                        descricao: m.material,
-                        observacao: m.detalhes,
-                        valor_unitario: m.preco_unitario,
-                        quantidade: m.quantidade,
-                        valor_total: m.valor_total,
-                        tipo_especifico: m.material
-                    }))
-            };
+            const formDataToSend = new FormData();
 
-            console.log('📤 Enviando dados ao componente pai (sem requisição direta):', {
-                cliente_id: dataToSend.cliente_id,
-                numero_orcamento: dataToSend.numero_orcamento,
-                timestamp: new Date().toISOString()
+            // Adicionar campos de texto ao FormData
+            formDataToSend.append("numero_orcamento", formData.numero_orcamento);
+            formDataToSend.append("empresa_id", formData.empresa_id);
+            formDataToSend.append("cliente_id", clienteIdNum);
+            formDataToSend.append("referencia", formData.referencia);
+            formDataToSend.append("data_orcamento", formData.data_orcamento);
+            formDataToSend.append("validade_orcamento", formData.validade_orcamento);
+            formDataToSend.append("prazo_inicio", formData.prazo_inicio);
+            formDataToSend.append("prazo_duracao", formData.prazo_duracao);
+            formDataToSend.append("observacoes", formData.observacoes);
+            formDataToSend.append("imposto_percentual", formData.imposto_percentual);
+            formDataToSend.append("frete", formData.frete);
+            formDataToSend.append("desconto_valor", formData.desconto_valor);
+            formDataToSend.append("desconto_percentual", formData.desconto_percentual);
+            formDataToSend.append("tipo_desconto", formData.tipo_desconto);
+            formDataToSend.append("condicoes_pagamento", formData.condicoes_pagamento);
+            formDataToSend.append("meios_pagamento", formData.meios_pagamento);
+            formDataToSend.append("anotacoes_internas", formData.anotacoes_internas);
+            formDataToSend.append("valor_total", formData.valor_total);
+            formDataToSend.append("status", formData.status);
+
+            // Adicionar serviços e materiais como strings JSON
+            formDataToSend.append("servicos", JSON.stringify(servicos
+                .filter(s => s.servico.trim())
+                .map(s => ({
+                    descricao: s.servico,
+                    observacao: s.detalhes,
+                    valor_unitario: s.preco_unitario,
+                    quantidade: s.quantidade,
+                    valor_total: s.valor_total,
+                    tipo_especifico: s.servico,
+                    id: s.id // Incluir ID para edição de serviços existentes
+                }))
+            ));
+
+            formDataToSend.append("materiais", JSON.stringify(materiais
+                .filter(m => m.material.trim())
+                .map(m => ({
+                    descricao: m.material,
+                    observacao: m.detalhes,
+                    valor_unitario: m.preco_unitario,
+                    quantidade: m.quantidade,
+                    valor_total: m.valor_total,
+                    tipo_especifico: m.material,
+                    id: m.id // Incluir ID para edição de materiais existentes
+                }))
+            ));
+
+
+            // Adicionar fotos novas ao FormData
+            fotosNovas.forEach((file, index) => {
+
+                formDataToSend.append(`fotos_novas[]`, file);
             });
 
-            await onSave(dataToSend);
+            // Adicionar IDs/caminhos de fotos existentes que devem ser mantidas
+            formDataToSend.append("fotos_existentes", JSON.stringify(fotosExistentes.map(foto => foto.id)));
+
+            console.log("📤 Preparando FormData para envio:", formDataToSend);
+
+            await onSave(formDataToSend);
 
             setHasUnsavedChanges(false);
 
         } catch (error) {
-            console.error('❌ Erro ao preparar envio do orçamento:', error);
+            console.error("❌ Erro ao preparar envio do orçamento:", error);
 
         } finally {
             releaseSubmission();
-            console.log('🏁 Submissão finalizada');
+            console.log("🏁 Submissão finalizada");
         }
-    };
-
-    const handleButtonClick = (e) => {
-        if (submitting || isSubmittingRef.current) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('🚫 Clique bloqueado - submissão em andamento');
-            return false;
-        }
-        return true;
     };
 
     const totais = calcularTotais();
 
     return (
-        <div className="formulario-orcamento">
-            {hasUnsavedChanges && (
-                <div className="unsaved-changes-indicator">
-                    ⚠ Você tem alterações não salvas
-                </div>
-            )}
-
-            {message.text && (
-                <div className={`form-message ${message.type}`}>
-                    {message.type === 'success' ? '✓' : '⚠'} {message.text}
-                </div>
-            )}
+        <>
+            {
+                message.text && (
+                    <div className={`form-message ${message.type}`}>
+                        {message.type === 'success' ? '✓' : '⚠'} {message.text}
+                    </div>
+                )
+            }
 
             <form onSubmit={handleSubmit} className="orcamento-form">
                 <div className="form-sections-wrapper">
@@ -1097,7 +1119,6 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
                         type="submit"
                         className={`btn-salvar ${submitting ? 'loading' : ''}`}
                         disabled={submitting}
-                        onClick={handleButtonClick} // Proteção adicional
                     >
                         {submitting ? (
                             <>
@@ -1115,7 +1136,8 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
             </form>
 
             {/* CSS adicional para o spinner */}
-            <style>{`
+            <div >
+                <style>{`
                 .btn-salvar.loading {
                     opacity: 0.7;
                     cursor: not-allowed;
@@ -1136,9 +1158,11 @@ const FormularioOrcamentoExpandido = ({ orcamento, empresas, clientes, onSave, o
                     0% { transform: rotate(0deg); }
                     100% { transform: rotate(360deg); }
                 }
-            `}</style>
-        </div>
+            `} </style>
+            </div >
+        </>
     );
 };
+
 
 export default FormularioOrcamentoExpandido;
