@@ -191,7 +191,7 @@ const Dashboard = () => {
                 {/* KPIs */}
                 <div className="kpi-grid">
 
-                    <div className="kpi-card">
+                    <div className="kpi-card kpi-clientes-ativos">
                         <div className="kpi-header">
                             <div className="kpi-icon icon-primary">👥</div>
                             <h3>Clientes Ativos</h3>

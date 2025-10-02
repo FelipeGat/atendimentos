@@ -177,6 +177,12 @@
     gap: 8px;
     width: 100%;
     margin-bottom: 8px;
+    /* padding removido do padrão */
+}
+.kpi-clientes-ativos .kpi-header {
+    justify-content: space-between;
+    padding: 0 18px;
+    box-sizing: border-box;
 }
 
 .kpi-value {
