@@ -190,52 +190,58 @@ const Dashboard = () => {
             <div className="dashboard-content">
                 {/* KPIs */}
                 <div className="kpi-grid">
+
                     <div className="kpi-card">
-                        <div className="kpi-icon icon-primary">👥</div>
-                        <div className="kpi-content">
+                        <div className="kpi-header">
+                            <div className="kpi-icon icon-primary">👥</div>
                             <h3>Clientes Ativos</h3>
-                            <span className="kpi-value">{formatNumber(getEstatisticaValue('total_clientes'))}</span>
                         </div>
+                        <span className="kpi-value">{formatNumber(getEstatisticaValue('total_clientes'))}</span>
                     </div>
 
+
                     <div className="kpi-card">
-                        <div className="kpi-icon icon-info">🖥️</div>
-                        <div className="kpi-content">
+                        <div className="kpi-header">
+                            <div className="kpi-icon icon-info">🖥️</div>
                             <h3>Equipamentos</h3>
-                            <span className="kpi-value">{formatNumber(getEstatisticaValue('total_equipamentos'))}</span>
                         </div>
+                        <span className="kpi-value">{formatNumber(getEstatisticaValue('total_equipamentos'))}</span>
                     </div>
 
+
                     <div className="kpi-card">
-                        <div className="kpi-icon icon-secondary">📋</div>
-                        <div className="kpi-content">
+                        <div className="kpi-header">
+                            <div className="kpi-icon icon-secondary">📋</div>
                             <h3>Total Atendimentos</h3>
-                            <span className="kpi-value">{formatNumber(getEstatisticaValue('total_atendimentos'))}</span>
                         </div>
+                        <span className="kpi-value">{formatNumber(getEstatisticaValue('total_atendimentos'))}</span>
                     </div>
 
+
                     <div className="kpi-card">
-                        <div className="kpi-icon icon-danger">🔓</div>
-                        <div className="kpi-content">
+                        <div className="kpi-header">
+                            <div className="kpi-icon icon-danger">🔓</div>
                             <h3>Atendimentos Abertos</h3>
-                            <span className="kpi-value">{formatNumber(getEstatisticaValue('atendimentos_abertos'))}</span>
                         </div>
+                        <span className="kpi-value">{formatNumber(getEstatisticaValue('atendimentos_abertos'))}</span>
                     </div>
 
+
                     <div className="kpi-card">
-                        <div className="kpi-icon icon-success">✅</div>
-                        <div className="kpi-content">
+                        <div className="kpi-header">
+                            <div className="kpi-icon icon-success">✅</div>
                             <h3>Concluídos Este Mês</h3>
-                            <span className="kpi-value">{formatNumber(getEstatisticaValue('atendimentos_mes'))}</span>
                         </div>
+                        <span className="kpi-value">{formatNumber(getEstatisticaValue('atendimentos_mes'))}</span>
                     </div>
 
+
                     <div className="kpi-card">
-                        <div className="kpi-icon icon-warning">💰</div>
-                        <div className="kpi-content">
+                        <div className="kpi-header">
+                            <div className="kpi-icon icon-warning">💰</div>
                             <h3>Receita do Mês</h3>
-                            <span className="kpi-value">{formatCurrency(getEstatisticaValue('receita_mes'))}</span>
                         </div>
+                        <span className="kpi-value">{formatCurrency(getEstatisticaValue('receita_mes'))}</span>
                     </div>
                 </div>
 
