@@ -108,7 +108,7 @@ function handleGet($conn, $empresa_id, $id = null)
                                u.nome AS atendente_nome, 
                                eq.nome AS equipamento_nome, 
                                ass.nome AS assunto_nome, 
-                               e.nome AS empresa_nome, 
+                               COALESCE(e.nome_fantasia, e.razao_social) AS empresa_nome, 
                                e.custo_operacional_dia
                         FROM atendimentos a
                         LEFT JOIN clientes c ON c.id = a.cliente_id
@@ -130,7 +130,7 @@ function handleGet($conn, $empresa_id, $id = null)
                                u.nome AS atendente_nome, 
                                eq.nome AS equipamento_nome, 
                                ass.nome AS assunto_nome, 
-                               e.nome AS empresa_nome, 
+                               COALESCE(e.nome_fantasia, e.razao_social) AS empresa_nome, 
                                e.custo_operacional_dia
                         FROM atendimentos a
                         LEFT JOIN clientes c ON c.id = a.cliente_id
@@ -175,7 +175,7 @@ function handleGet($conn, $empresa_id, $id = null)
                        u.nome AS atendente_nome, 
                        eq.nome AS equipamento_nome, 
                        ass.nome AS assunto_nome, 
-                       e.nome AS empresa_nome, 
+                       COALESCE(e.nome_fantasia, e.razao_social) AS empresa_nome, 
                        e.custo_operacional_dia 
                 FROM atendimentos a 
                 LEFT JOIN clientes c ON c.id = a.cliente_id 

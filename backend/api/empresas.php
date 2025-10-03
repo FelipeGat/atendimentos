@@ -9,7 +9,13 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Empresa-ID");
 header("Access-Control-Max-Age: 86400");
-header("Content-Type: application/json; charset=UTF-8");
+
+// Definir o content-type após verificar se é uma requisição com FormData
+if (!empty($_FILES) || !empty($_POST)) {
+    // Se houver arquivos ou dados POST, não definir content-type
+} else {
+    header("Content-Type: application/json; charset=UTF-8");
+}
 
 // Tratar requisições OPTIONS (preflight)
 if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") {
@@ -38,22 +44,42 @@ switch ($method) {
         break;
 
     case "POST":
-        // A requisição POST pode ser tanto JSON quanto FormData
-        $input = $_POST;
-        if (empty($input)) {
-            $input_json = file_get_contents("php://input");
-            $input = json_decode($input_json, true);
-        }
-        handlePost($conn, $input);
-        break;
+        // Determinar se é uma criação ou atualização
+        $operation = $_POST['operation'] ?? 'create';
+        error_log("[EMPRESAS][POST] Operação: " . $operation);
+        error_log("[EMPRESAS][POST] POST data: " . print_r($_POST, true));
+        error_log("[EMPRESAS][POST] FILES data: " . print_r($_FILES, true));
 
-    case "PUT":
-        // A requisição PUT deve ser lida a partir do input bruto (sempre JSON)
-        $input_json = file_get_contents("php://input");
-        $input = json_decode($input_json, true);
-        if (!$input) {
+        if ($operation === 'update') {
+            handlePut($conn, $_POST);
+        } else {
+            handlePost($conn, $_POST);
+        }
+        break;
+        
+        // Tentar ler dados do PUT
+        $putData = file_get_contents("php://input");
+        error_log("[EMPRESAS][PUT] PUT raw data: " . $putData);
+        
+        $input = [];
+        
+        // Se tiver dados POST, usar eles
+        if (!empty($_POST)) {
+            error_log("[EMPRESAS][PUT] Usando dados do POST");
+            $input = $_POST;
+        } 
+        // Se não, tentar decodificar JSON do body
+        else if (!empty($putData)) {
+            error_log("[EMPRESAS][PUT] Tentando decodificar JSON do body");
+            $input = json_decode($putData, true);
+        }
+        
+        if (empty($input)) {
+            error_log("[EMPRESAS][PUT] Nenhum dado válido recebido");
             responderErro("Dados de entrada inválidos ou não fornecidos", 400);
         }
+        
+        error_log("[EMPRESAS][PUT] Dados finais para processamento: " . print_r($input, true));
         handlePut($conn, $input);
         break;
 
@@ -119,12 +145,12 @@ function handleGet($conn, $id) {
             // Listar todas as empresas - AGORA RETORNANDO OS CAMPOS CORRETOS
             $filtro_status = isset($_GET["status"]) && $_GET["status"] === "ativo" ? " AND ativo = 1" : "";
 
-            $stmt = $conn->prepare("
+            $sql = "
                 SELECT 
                     id, 
                     cnpj, 
                     razao_social,
-                    nome_fantasia AS nome,
+                    nome_fantasia,
                     logradouro, 
                     numero, 
                     bairro, 
@@ -144,18 +170,32 @@ function handleGet($conn, $id) {
                 FROM empresas
                 WHERE removido_em IS NULL {$filtro_status}
                 ORDER BY id DESC
-            ");
+            ";
+            
+            $stmt = $conn->prepare($sql);
             if (!$stmt) {
+                error_log("Erro na preparação da consulta: " . $conn->error);
+                error_log("SQL: " . $sql);
                 responderErro("Erro na preparação da consulta: " . $conn->error, 500);
             }
-            $stmt->execute();
+            
+            if (!$stmt->execute()) {
+                error_log("Erro na execução da consulta: " . $stmt->error);
+                responderErro("Erro na execução da consulta: " . $stmt->error, 500);
+            }
+            
             $result = $stmt->get_result();
+            if (!$result) {
+                error_log("Erro ao obter resultado: " . $stmt->error);
+                responderErro("Erro ao obter resultado: " . $stmt->error, 500);
+            }
+            
             $empresas = $result->fetch_all(MYSQLI_ASSOC);
             
             foreach ($empresas as &$empresa) {
                 $empresa["ativo"] = (int)$empresa["ativo"];
                 error_log("DEBUG - Empresa disponível: ID=" . $empresa["id"] . 
-                         ", Nome=" . $empresa["nome"] . 
+                         ", Nome Fantasia=" . ($empresa["nome_fantasia"] ?? '') . 
                          ", Razão Social=" . $empresa["razao_social"]);
             }
             
@@ -173,6 +213,12 @@ function handleGet($conn, $id) {
  */
 function handlePost($conn, $input) {
     try {
+        // Se os dados vierem via POST (FormData)
+        if (isset($_POST['razao_social'])) {
+            $input = $_POST;
+            error_log("[EMPRESAS][POST] Dados recebidos via FormData");
+        }
+
         if (!isset($input["razao_social"]) || empty(trim($input["razao_social"]))) {
             responderErro("Razão Social é obrigatória", 400);
         }
@@ -283,11 +329,69 @@ function handlePost($conn, $input) {
  */
 function handlePut($conn, $input) {
     try {
-        error_log("[EMPRESAS][PUT] Dados recebidos: " . json_encode($input));
+        error_log("[EMPRESAS][PUT] Iniciando atualização de empresa");
+        error_log("[EMPRESAS][PUT] Dados recebidos: " . print_r($input, true));
+        
+        // Garantir que temos os dados necessários
+        if (empty($input['id'])) {
+            error_log("[EMPRESAS][PUT] ID não fornecido");
+            responderErro("ID da empresa é obrigatório", 400);
+        }
+        
+        if (empty($input['razao_social'])) {
+            error_log("[EMPRESAS][PUT] Razão social não fornecida");
+            responderErro("Razão social é obrigatória", 400);
+        }
+        
         if (!isset($input["id"])) {
             responderErro("ID da empresa é obrigatório", 400);
         }
         $id = $input["id"];
+        
+        // Verificar se a empresa existe
+        $stmt = $conn->prepare("
+            SELECT id, logomarca FROM empresas 
+            WHERE id = ? AND removido_em IS NULL
+        ");
+        if (!$stmt) {
+            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+        }
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        
+        $result = $stmt->get_result();
+        $empresa = $result->fetch_assoc();
+        
+        if (!$empresa) {
+            responderErro("Empresa não encontrada", 404);
+        }
+        
+        // Processar upload de logo se houver
+        if (isset($_FILES['logomarca']) && $_FILES['logomarca']['error'] === UPLOAD_ERR_OK) {
+            $target_dir = __DIR__ . "/../uploads/logos/";
+            if (!is_dir($target_dir)) {
+                mkdir($target_dir, 0777, true);
+            }
+            
+            // Remove logo antiga se existir
+            if ($empresa['logomarca'] && file_exists($target_dir . $empresa['logomarca'])) {
+                unlink($target_dir . $empresa['logomarca']);
+            }
+            
+            $file_extension = strtolower(pathinfo($_FILES["logomarca"]["name"], PATHINFO_EXTENSION));
+            $file_name = uniqid() . "." . $file_extension;
+            $target_file = $target_dir . $file_name;
+            
+            if (move_uploaded_file($_FILES["logomarca"]["tmp_name"], $target_file)) {
+                $input['logomarca'] = $file_name;
+            } else {
+                error_log("[EMPRESAS][PUT] Erro ao mover arquivo de logomarca");
+            }
+        } else if (isset($input['logomarca_atual'])) {
+            // Mantém a logo atual
+            $input['logomarca'] = $input['logomarca_atual'];
+            unset($input['logomarca_atual']);
+        }
 
         // Verificar se a empresa existe
         $stmt = $conn->prepare("
@@ -380,10 +484,6 @@ function handlePut($conn, $input) {
         // Adicionar tipos e parâmetros do WHERE
         $types .= "i";
         $params[] = $id;
-        
-        // Log da query SQL e parâmetros
-        error_log("[EMPRESAS][PUT] Query SQL: " . $sql);
-        error_log("[EMPRESAS][PUT] Parâmetros: " . implode(", ", $params));
 
         // Preparar bind_param com call_user_func_array
         $bind_names[] = $types;
@@ -393,39 +493,20 @@ function handlePut($conn, $input) {
         call_user_func_array([$stmt, "bind_param"], $bind_names);
 
         if (!$stmt->execute()) {
-            error_log("[EMPRESAS][PUT] ERRO na execução: " . $stmt->error);
             responderErro("Erro ao atualizar empresa: " . $stmt->error, 500);
-        } else {
-            error_log("[EMPRESAS][PUT] UPDATE executado com sucesso. Linhas afetadas: " . $stmt->affected_rows);
-            
-            // Verificar se empresa ainda está ativa após update
-            $checkStmt = $conn->prepare("SELECT id, removido_em FROM empresas WHERE id = ?");
-            $checkStmt->bind_param("i", $id);
-            $checkStmt->execute();
-            $checkResult = $checkStmt->get_result();
-            $checkRow = $checkResult->fetch_assoc();
-            
-            if ($checkRow) {
-                error_log("[EMPRESAS][PUT] Verificação pós-update: ID=" . $checkRow['id'] . ", removido_em=" . ($checkRow['removido_em'] ? $checkRow['removido_em'] : 'NULL'));
-            } else {
-                error_log("[EMPRESAS][PUT] ERRO: Empresa não encontrada após update!");
-            }
         }
 
         // Retornar a empresa atualizada
-        $selectSQL = "
+        $stmt = $conn->prepare("
             SELECT 
                 id, razao_social, nome_fantasia, cnpj, logradouro, numero, bairro, cidade, estado, cep, 
                 telefone, email, inscricao_municipal, inscricao_estadual, logomarca, 
                 custo_operacional_dia, custo_operacional_semana, custo_operacional_mes, 
                 custo_operacional_ano, proximo_numero_orcamento, modelo_orcamento, ativo, 
-                criado_em, atualizado_em, removido_em
+                criado_em, atualizado_em
             FROM empresas 
             WHERE id = ?
-        ";
-        error_log("[EMPRESAS][PUT] Query SELECT final: " . $selectSQL);
-        
-        $stmt = $conn->prepare($selectSQL);
+        ");
         if (!$stmt) {
             responderErro("Erro na preparação da consulta: " . $conn->error, 500);
         }
@@ -448,7 +529,6 @@ function handlePut($conn, $input) {
  */
 function handleDelete($conn, $id) {
     try {
-        error_log("[EMPRESAS][DELETE] ID recebido: " . $id);
         if (!$id) {
             responderErro("ID da empresa não fornecido na URL.", 400);
         }

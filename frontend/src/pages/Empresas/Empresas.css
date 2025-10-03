@@ -579,17 +579,92 @@
     font-style: italic;
 }
 
-.logo-preview {
+.logo-upload-container {
     margin-top: 16px;
-    text-align: center;
+    width: 100%;
+}
+
+.logo-upload-area {
+    width: 100%;
+    min-height: 200px;
+    border: 2px dashed #a7f3d0;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: #f0fdfa;
+    position: relative;
+    overflow: hidden;
+}
+
+.logo-upload-area:hover {
+    border-color: #34d399;
+    background: #ecfdf5;
+}
+
+.logo-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: #059669;
+}
+
+.upload-icon {
+    font-size: 32px;
+}
+
+.logo-preview {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
 }
 
 .logo-preview img {
-    max-width: 200px;
-    max-height: 150px;
-    border-radius: 8px;
-    border: 2px solid #a7f3d0;
+    max-width: 100%;
+    max-height: 200px;
     object-fit: contain;
+}
+
+.logo-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.logo-overlay span {
+    color: white;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 8px 16px;
+    border-radius: 4px;
+}
+
+.logo-upload-area:hover .logo-overlay {
+    opacity: 1;
+}
+
+.logo-info {
+    margin-top: 8px;
+    text-align: center;
+}
+
+.logo-info .file-help {
+    color: #64748b;
+    font-style: italic;
+    line-height: 1.5;
 }
 
 /* --- CHECKBOXES --- */
