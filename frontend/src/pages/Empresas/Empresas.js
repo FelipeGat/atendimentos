@@ -230,67 +230,79 @@ const EmpresasCompleto = () => {
     // Submeter formulário
     const handleSubmit = async (e) => {
         e.preventDefault();
-
-        if (!validateForm()) return;
-
+        
         try {
-            // Envia os dados como JSON para o PUT/POST
+            if (!validateForm()) {
+                return;
+            }
+            
             const url = `${process.env.REACT_APP_API_BASE_URL}/empresas.php`;
-            const method = editingEmpresa ? 'PUT' : 'POST';
-
-            let dataToSend = { ...formData };
+            const formDataToSend = new FormData();
+            
+            // Adicionar flag de operação e ID se estiver editando
+            formDataToSend.append('operation', editingEmpresa ? 'update' : 'create');
             if (editingEmpresa) {
-                dataToSend.id = editingEmpresa.id;
+                formDataToSend.append('id', editingEmpresa.id);
             }
 
-            // Remove os campos que não devem ir no JSON
-            delete dataToSend.logomarca;
-            delete dataToSend.segmentosSelecionados;
-            delete dataToSend.tecnicosResponsaveis;
+            // Adicionar todos os campos
+            const fields = {
+                razao_social: formData.razao_social || '',
+                nome_fantasia: formData.nome_fantasia || '',
+                cnpj: formData.cnpj || '',
+                logradouro: formData.logradouro || '',
+                numero: formData.numero || '',
+                bairro: formData.bairro || '',
+                cidade: formData.cidade || '',
+                estado: formData.estado || '',
+                cep: formData.cep || '',
+                telefone: formData.telefone || '',
+                email: formData.email || '',
+                inscricao_municipal: formData.inscricao_municipal || '',
+                inscricao_estadual: formData.inscricao_estadual || '',
+                custo_operacional_dia: formData.custo_operacional_dia || 0,
+                custo_operacional_semana: formData.custo_operacional_semana || 0,
+                custo_operacional_mes: formData.custo_operacional_mes || 0,
+                custo_operacional_ano: formData.custo_operacional_ano || 0,
+                ativo: formData.ativo || 1
+            };
+
+            // Adicionar campos ao FormData
+            Object.entries(fields).forEach(([key, value]) => {
+                formDataToSend.append(key, value);
+            });
+
+            // Tratar a logo
+            if (formData.logomarca instanceof File) {
+                formDataToSend.append('logomarca', formData.logomarca);
+            } else if (editingEmpresa?.logomarca) {
+                formDataToSend.append('logomarca_atual', editingEmpresa.logomarca);
+            }
+
+            console.log('Enviando dados:', Object.fromEntries(formDataToSend.entries()));
 
             const response = await fetch(url, {
-                method: method,
+                method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'X-Empresa-ID': '1',
+                    'X-Empresa-ID': '1'
                 },
-                body: JSON.stringify(dataToSend),
+                body: formDataToSend
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorText = await response.text();
+                console.error('Erro na requisição:', errorText);
+                throw new Error(`Erro na requisição: ${response.status}`);
             }
 
             const result = await response.json();
-
-            // Lógica para upload de imagem SE UMA NOVA IMAGEM FOI SELECIONADA
-            if (result.success && formData.logomarca instanceof File) {
-                const formDataFile = new FormData();
-                formDataFile.append('id', result.data.id); // Pega o ID da empresa recém-criada ou atualizada
-                formDataFile.append('logomarca', formData.logomarca);
-
-                const fileResponse = await fetch(url, {
-                    method: 'POST', // Usa POST para o upload do arquivo
-                    headers: {
-                        'X-Empresa-ID': '1',
-                    },
-                    body: formDataFile,
-                });
-
-                if (!fileResponse.ok) {
-                    throw new Error(`Erro ao subir logomarca: HTTP error! status: ${fileResponse.status}`);
-                }
-
-                const fileResult = await fileResponse.json();
-                if (!fileResult.success) {
-                    throw new Error(fileResult.message || 'Erro ao salvar logomarca');
-                }
-            }
-
+            console.log('Sucesso:', result);
+            
             showMessage(
                 editingEmpresa ? 'Empresa atualizada com sucesso!' : 'Empresa criada com sucesso!',
                 'success'
             );
+            
             fetchData();
             handleCloseModal();
         } catch (error) {
@@ -868,23 +880,41 @@ const EmpresasCompleto = () => {
                                     <div className="form-grid">
                                         <div className="form-group full-width">
                                             <label htmlFor="logomarca">Logomarca da Empresa</label>
-                                            <input
-                                                type="file"
-                                                id="logomarca"
-                                                name="logomarca"
-                                                accept="image/*"
-                                                onChange={handleInputChange}
-                                                className="file-input"
-                                            />
-                                            <small className="file-help">
-                                                Formatos aceitos: JPG, PNG, GIF (máx. 2MB)
-                                            </small>
-
-                                            {logoPreview && (
-                                                <div className="logo-preview">
-                                                    <img src={logoPreview} alt="Preview da logo" />
+                                            
+                                            <div className="logo-upload-container">
+                                                <div className="logo-upload-area" onClick={() => document.getElementById('logomarca').click()}>
+                                                    {logoPreview ? (
+                                                        <div className="logo-preview">
+                                                            <img src={logoPreview} alt="Preview da logo" />
+                                                            <div className="logo-overlay">
+                                                                <span>🔄 Clique para trocar</span>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="logo-placeholder">
+                                                            <span className="upload-icon">📸</span>
+                                                            <span>Clique para adicionar uma logo</span>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
+                                                
+                                                <input
+                                                    type="file"
+                                                    id="logomarca"
+                                                    name="logomarca"
+                                                    accept="image/*"
+                                                    onChange={handleInputChange}
+                                                    className="file-input"
+                                                    style={{ display: 'none' }}
+                                                />
+                                                
+                                                <div className="logo-info">
+                                                    <small className="file-help">
+                                                        ℹ️ Formatos aceitos: JPG, PNG, GIF (máx. 2MB)<br/>
+                                                        📁 A imagem será armazenada em: /backend/uploads/logos/
+                                                    </small>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

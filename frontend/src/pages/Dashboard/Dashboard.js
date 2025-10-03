@@ -145,19 +145,21 @@ const Dashboard = () => {
                         {empresas.map(empresa => {
                             let logoSrc = null;
                             let borderColor = '#1e88e5';
-                            if (empresa.nome.toLowerCase().includes('delta')) {
-                                logoSrc = require('../../assets/delta.png');
-                                borderColor = '#354F2A';
-                            } else if (empresa.nome.toLowerCase().includes('gw')) {
-                                logoSrc = require('../../assets/gw-logo.jpg');
-                                borderColor = '#2e3486';
-                            } else if (empresa.nome.toLowerCase().includes('invest')) {
-                                logoSrc = require('../../assets/invest.jpg');
-                                borderColor = '#0A3D62';
+                            
+                            // Usar a logo do diretório de uploads se existir
+                            if (empresa.logomarca) {
+                                const imgBaseUrl = process.env.REACT_APP_IMG_BASE_URL || 'http://localhost/atendimentos/backend/uploads';
+                                logoSrc = `${imgBaseUrl}/logos/${empresa.logomarca}`;
                             } else {
+                                // Fallback para logo padrão se não houver logo personalizada
                                 logoSrc = require('../../assets/login-illustration.png');
-                                borderColor = '#1e88e5';
                             }
+
+                            // Define cor da borda baseado no primeiro caractere do nome para ter cores únicas
+                            const colors = ['#1e88e5', '#354F2A', '#2e3486', '#0A3D62', '#6B4C9A', '#922B21'];
+                            const index = empresa.nome.charCodeAt(0) % colors.length;
+                            borderColor = colors[index];
+                            
                             const isSelected = empresaIdSelecionada == empresa.id;
                             return (
                                 <div key={empresa.id} className="empresa-logo-col">
