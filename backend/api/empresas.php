@@ -145,12 +145,12 @@ function handleGet($conn, $id) {
             // Listar todas as empresas - AGORA RETORNANDO OS CAMPOS CORRETOS
             $filtro_status = isset($_GET["status"]) && $_GET["status"] === "ativo" ? " AND ativo = 1" : "";
 
-            $stmt = $conn->prepare("
+            $sql = "
                 SELECT 
                     id, 
                     cnpj, 
                     razao_social,
-                    nome_fantasia AS nome,
+                    nome_fantasia,
                     logradouro, 
                     numero, 
                     bairro, 
@@ -170,18 +170,32 @@ function handleGet($conn, $id) {
                 FROM empresas
                 WHERE removido_em IS NULL {$filtro_status}
                 ORDER BY id DESC
-            ");
+            ";
+            
+            $stmt = $conn->prepare($sql);
             if (!$stmt) {
+                error_log("Erro na preparação da consulta: " . $conn->error);
+                error_log("SQL: " . $sql);
                 responderErro("Erro na preparação da consulta: " . $conn->error, 500);
             }
-            $stmt->execute();
+            
+            if (!$stmt->execute()) {
+                error_log("Erro na execução da consulta: " . $stmt->error);
+                responderErro("Erro na execução da consulta: " . $stmt->error, 500);
+            }
+            
             $result = $stmt->get_result();
+            if (!$result) {
+                error_log("Erro ao obter resultado: " . $stmt->error);
+                responderErro("Erro ao obter resultado: " . $stmt->error, 500);
+            }
+            
             $empresas = $result->fetch_all(MYSQLI_ASSOC);
             
             foreach ($empresas as &$empresa) {
                 $empresa["ativo"] = (int)$empresa["ativo"];
                 error_log("DEBUG - Empresa disponível: ID=" . $empresa["id"] . 
-                         ", Nome=" . $empresa["nome"] . 
+                         ", Nome Fantasia=" . ($empresa["nome_fantasia"] ?? '') . 
                          ", Razão Social=" . $empresa["razao_social"]);
             }
             

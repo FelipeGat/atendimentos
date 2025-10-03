@@ -310,7 +310,7 @@ const AtendimentosRefatorado = () => {
     const getEmpresaNome = useCallback((id) => {
         if (!id) return 'Desconhecido';
         const empresa = empresas.find(e => e.id === id);
-        return empresa ? empresa.nome : `Empresa ID ${id} (não encontrada)`;
+        return empresa ? (empresa.nome_fantasia || empresa.razao_social) : `Empresa ID ${id} (não encontrada)`;
     }, [empresas]);
 
     // Carregar dados iniciais (empresas e depois o resto)
@@ -710,7 +710,7 @@ const AtendimentosRefatorado = () => {
                             <option value="">Todas as Empresas</option>
                             {empresas.map(empresa => (
                                 <option key={empresa.id} value={empresa.id}>
-                                    {empresa.nome}
+                                    {empresa.nome_fantasia || empresa.razao_social}
                                 </option>
                             ))}
                         </select>
@@ -1019,7 +1019,7 @@ const AtendimentosRefatorado = () => {
                                                     <option value="">Selecione uma empresa</option>
                                                     {empresas.map(empresa => (
                                                         <option key={empresa.id} value={empresa.id}>
-                                                            {empresa.nome}
+                                                            {empresa.nome_fantasia || empresa.razao_social}
                                                         </option>
                                                     ))}
                                                 </select>

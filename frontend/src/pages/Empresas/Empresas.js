@@ -146,6 +146,12 @@ const EmpresasCompleto = () => {
 
         let newFormData = { ...formData, [name]: type === 'checkbox' ? (e.target.checked ? 1 : 0) : value };
 
+        // Debug para nome_fantasia
+        if (name === 'nome_fantasia') {
+            console.log('Campo nome_fantasia alterado para:', value);
+            console.log('FormData atual:', formData);
+        }
+
         // Cálculo automático dos custos operacionais
         if (name === 'custo_operacional_dia') {
             const custoDia = parseFloat(value) || 0;
@@ -373,11 +379,12 @@ const EmpresasCompleto = () => {
 
     // Abrir modal para editar
     const handleEdit = (empresa) => {
+        console.log('Editando empresa:', empresa); // Debug
         setEditingEmpresa(empresa);
         setFormData({
             cnpj: empresa.cnpj || '',
-            razao_social: empresa.razao_social || empresa.razao_social || '',
-            nome_fantasia: empresa.nome_fantasia || empresa.nome_fantasia || '',
+            razao_social: empresa.razao_social || '',
+            nome_fantasia: empresa.nome_fantasia || empresa.nome || '',
             logradouro: empresa.logradouro || '',
             numero: empresa.numero || '',
             bairro: empresa.bairro || '',
@@ -386,15 +393,15 @@ const EmpresasCompleto = () => {
             cep: empresa.cep || '',
             telefone: empresa.telefone || '',
             email: empresa.email || '',
-            inscricao_municipal: empresa.inscricao_municipal || empresa.inscricao_municipal || '',
-            inscricao_estadual: empresa.inscricao_estadual || empresa.inscricao_estadual || '',
+            inscricao_municipal: empresa.inscricao_municipal || '',
+            inscricao_estadual: empresa.inscricao_estadual || '',
             logomarca: null,
             segmentosSelecionados: empresa.segmentos || [],
             tecnicosResponsaveis: empresa.tecnicos || [],
-            custo_operacional_dia: empresa.custo_operacional_dia || empresa.custo_operacional_dia || 0,
-            custo_operacional_semana: empresa.custo_operacional_semana || empresa.custo_operacional_semana || 0,
-            custo_operacional_mes: empresa.custo_operacional_mes || empresa.custo_operacional_mes || 0,
-            custo_operacional_ano: empresa.custo_operacional_ano || empresa.custo_operacional_ano || 0,
+            custo_operacional_dia: empresa.custo_operacional_dia || 0,
+            custo_operacional_semana: empresa.custo_operacional_semana || 0,
+            custo_operacional_mes: empresa.custo_operacional_mes || 0,
+            custo_operacional_ano: empresa.custo_operacional_ano || 0,
             ativo: empresa.ativo || 1
         });
 
@@ -419,7 +426,7 @@ const EmpresasCompleto = () => {
     // Filtrar e ordenar dados
     const filteredEmpresas = empresas.filter(empresa =>
         (empresa.razao_social || empresa.razao_social || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (empresa.nome_fantasia || empresa.nome_fantasia || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (empresa.nome_fantasia || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (empresa.cnpj || '').includes(searchTerm) ||
         (empresa.cidade || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -575,7 +582,7 @@ const EmpresasCompleto = () => {
                                     <tr key={empresa.id}>
                                         <td>{empresa.id}</td>
                                         <td>{empresa.razao_social || empresa.razao_social}</td>
-                                        <td>{empresa.nome_fantasia || empresa.nome_fantasia}</td>
+                                        <td>{empresa.nome_fantasia || ''}</td>
                                         <td>{formatCNPJ(empresa.cnpj)}</td>
                                         <td>{empresa.cidade}</td>
                                         <td>{empresa.estado}</td>
