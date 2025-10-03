@@ -231,6 +231,7 @@ body {
     gap: 0.75rem;
     align-items: center;
     flex-wrap: wrap;
+    margin-bottom: 1.5rem;
 }
 
 .filter-select {
@@ -320,7 +321,7 @@ body {
     overflow: hidden;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    margin-top: 0.5rem;
+    margin-top: calc(0.5rem + 8px);
 }
 
 .atendimentos-table {
@@ -567,6 +568,7 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 1.5rem;
+    margin-top: calc(0.5rem + 8px);
 }
 
 .atendimento-card {
