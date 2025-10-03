@@ -361,17 +361,45 @@ body {
 .atendimentos-table th:nth-child(1),
 .atendimentos-table td:nth-child(1) { min-width: 60px; max-width: 80px; text-align: center; }
 .atendimentos-table th:nth-child(2),
-.atendimentos-table td:nth-child(2) { min-width: 120px; max-width: 180px; text-align: center; white-space: normal; }
+.atendimentos-table td:nth-child(2) {
+    min-width: 140px;
+    max-width: 100%;
+    text-align: center;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+}
 .atendimentos-table th:nth-child(3),
-.atendimentos-table td:nth-child(3) { min-width: 120px; max-width: 160px; text-align: center; white-space: normal; }
+.atendimentos-table td:nth-child(3) {
+    min-width: 120px;
+    max-width: 100%;
+    text-align: center;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+}
 .atendimentos-table th:nth-child(4),
-.atendimentos-table td:nth-child(4) { min-width: 100px; max-width: 140px; text-align: center; white-space: normal; }
+.atendimentos-table td:nth-child(4) {
+    min-width: 120px;
+    max-width: 100%;
+    text-align: center;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+}
 .atendimentos-table th:nth-child(5),
 .atendimentos-table td:nth-child(5) { min-width: 100px; max-width: 120px; text-align: center; }
 .atendimentos-table th:nth-child(6),
 .atendimentos-table td:nth-child(6) { min-width: 100px; max-width: 120px; text-align: center; }
 .atendimentos-table th:nth-child(7),
-.atendimentos-table td:nth-child(7) { min-width: 120px; max-width: 160px; text-align: center; white-space: normal; }
+.atendimentos-table td:nth-child(7) {
+    min-width: 140px;
+    max-width: 100%;
+    text-align: center;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+}
 .atendimentos-table th:nth-child(8),
 .atendimentos-table td:nth-child(8) { min-width: 120px; max-width: 120px; text-align: center; }
 .atendimentos-table th:nth-child(9),
