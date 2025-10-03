@@ -65,7 +65,7 @@ body {
 .header-stats {
     display: flex;
     gap: 1rem;
-    margin-top: 0.5rem;
+    margin-top: 0.25rem;
 }
 
 .stat {
@@ -320,30 +320,111 @@ body {
     overflow: hidden;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
+    margin-top: 0.5rem;
 }
 
 .atendimentos-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9rem;
+    table-layout: fixed;
 }
 
 .atendimentos-table th {
     background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);
     color: white;
-    padding: 1.25rem 1.5rem;
-    text-align: left;
+    padding: 1rem 0.75rem;
+    text-align: center;
+    vertical-align: middle;
     font-weight: 600;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     border: none;
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+
+
+
+.atendimentos-table th,
+.atendimentos-table td {
+    padding: 1rem 0.75rem;
+    text-align: center;
+    vertical-align: middle;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Larguras e quebras específicas por coluna */
+.atendimentos-table th:nth-child(1),
+.atendimentos-table td:nth-child(1) { min-width: 60px; max-width: 80px; text-align: center; }
+.atendimentos-table th:nth-child(2),
+.atendimentos-table td:nth-child(2) {
+    min-width: 140px;
+    max-width: 100%;
+    text-align: center;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+}
+.atendimentos-table th:nth-child(3),
+.atendimentos-table td:nth-child(3) {
+    min-width: 120px;
+    max-width: 100%;
+    text-align: center;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+}
+.atendimentos-table th:nth-child(4),
+.atendimentos-table td:nth-child(4) {
+    min-width: 120px;
+    max-width: 100%;
+    text-align: center;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+}
+.atendimentos-table th:nth-child(5),
+.atendimentos-table td:nth-child(5) { min-width: 100px; max-width: 120px; text-align: center; }
+.atendimentos-table th:nth-child(6),
+.atendimentos-table td:nth-child(6) { min-width: 100px; max-width: 120px; text-align: center; }
+.atendimentos-table th:nth-child(7),
+.atendimentos-table td:nth-child(7) {
+    min-width: 140px;
+    max-width: 100%;
+    text-align: center;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+}
+.atendimentos-table th:nth-child(8),
+.atendimentos-table td:nth-child(8) { min-width: 120px; max-width: 120px; text-align: center; }
+.atendimentos-table th:nth-child(9),
+.atendimentos-table td:nth-child(9) { min-width: 100px; max-width: 120px; text-align: center; }
+
+
+.atendimentos-table th:first-child,
+.atendimentos-table td.id-cell {
+    min-width: 60px;
+    max-width: 80px;
+    text-align: center;
+}
+
+.atendimentos-table th:last-child,
+.atendimentos-table td .actions-cell {
+    min-width: 120px;
+    text-align: center;
 }
 
 .atendimentos-table td {
-    padding: 1.25rem 1.5rem;
+    padding: 1rem 0.75rem;
     border-bottom: 1px solid rgba(226, 232, 240, 0.5);
     vertical-align: middle;
+    text-align: center;
 }
 
 .table-row {
@@ -361,6 +442,7 @@ body {
     font-weight: 700;
     color: #06b6d4;
     font-size: 1rem;
+    text-align: center;
 }
 
 .priority-cell,
@@ -369,12 +451,14 @@ body {
     align-items: center;
     gap: 0.5rem;
     font-weight: 500;
+    justify-content: center;
 }
 
 .actions-cell {
     display: flex;
     gap: 0.5rem;
     align-items: center;
+    justify-content: center;
 }
 
 .action-btn {
@@ -1137,6 +1221,12 @@ body {
 
     .table-container {
         overflow-x: auto;
+        width: 100vw;
+        min-width: 320px;
+    }
+    .atendimentos-table {
+        min-width: 900px;
+    }
     }
 
     .atendimentos-table {
@@ -1180,7 +1270,6 @@ body {
         flex-wrap: wrap;
         justify-content: center;
     }
-}
 
 /* Remove a seção de Debug Info que aparece nas suas imagens */
 .debug-info-container,

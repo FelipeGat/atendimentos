@@ -283,6 +283,7 @@ function handlePost($conn, $input) {
  */
 function handlePut($conn, $input) {
     try {
+        error_log("[EMPRESAS][PUT] Dados recebidos: " . json_encode($input));
         if (!isset($input["id"])) {
             responderErro("ID da empresa é obrigatório", 400);
         }
@@ -379,6 +380,10 @@ function handlePut($conn, $input) {
         // Adicionar tipos e parâmetros do WHERE
         $types .= "i";
         $params[] = $id;
+        
+        // Log da query SQL e parâmetros
+        error_log("[EMPRESAS][PUT] Query SQL: " . $sql);
+        error_log("[EMPRESAS][PUT] Parâmetros: " . implode(", ", $params));
 
         // Preparar bind_param com call_user_func_array
         $bind_names[] = $types;
@@ -388,20 +393,39 @@ function handlePut($conn, $input) {
         call_user_func_array([$stmt, "bind_param"], $bind_names);
 
         if (!$stmt->execute()) {
+            error_log("[EMPRESAS][PUT] ERRO na execução: " . $stmt->error);
             responderErro("Erro ao atualizar empresa: " . $stmt->error, 500);
+        } else {
+            error_log("[EMPRESAS][PUT] UPDATE executado com sucesso. Linhas afetadas: " . $stmt->affected_rows);
+            
+            // Verificar se empresa ainda está ativa após update
+            $checkStmt = $conn->prepare("SELECT id, removido_em FROM empresas WHERE id = ?");
+            $checkStmt->bind_param("i", $id);
+            $checkStmt->execute();
+            $checkResult = $checkStmt->get_result();
+            $checkRow = $checkResult->fetch_assoc();
+            
+            if ($checkRow) {
+                error_log("[EMPRESAS][PUT] Verificação pós-update: ID=" . $checkRow['id'] . ", removido_em=" . ($checkRow['removido_em'] ? $checkRow['removido_em'] : 'NULL'));
+            } else {
+                error_log("[EMPRESAS][PUT] ERRO: Empresa não encontrada após update!");
+            }
         }
 
         // Retornar a empresa atualizada
-        $stmt = $conn->prepare("
+        $selectSQL = "
             SELECT 
                 id, razao_social, nome_fantasia, cnpj, logradouro, numero, bairro, cidade, estado, cep, 
                 telefone, email, inscricao_municipal, inscricao_estadual, logomarca, 
                 custo_operacional_dia, custo_operacional_semana, custo_operacional_mes, 
                 custo_operacional_ano, proximo_numero_orcamento, modelo_orcamento, ativo, 
-                criado_em, atualizado_em
+                criado_em, atualizado_em, removido_em
             FROM empresas 
             WHERE id = ?
-        ");
+        ";
+        error_log("[EMPRESAS][PUT] Query SELECT final: " . $selectSQL);
+        
+        $stmt = $conn->prepare($selectSQL);
         if (!$stmt) {
             responderErro("Erro na preparação da consulta: " . $conn->error, 500);
         }
@@ -424,6 +448,7 @@ function handlePut($conn, $input) {
  */
 function handleDelete($conn, $id) {
     try {
+        error_log("[EMPRESAS][DELETE] ID recebido: " . $id);
         if (!$id) {
             responderErro("ID da empresa não fornecido na URL.", 400);
         }
