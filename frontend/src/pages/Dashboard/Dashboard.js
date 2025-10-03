@@ -197,12 +197,16 @@ const Dashboard = () => {
                       onClick={() => setEmpresaIdSelecionada(empresa.id)}
                       style={
                         isSelected
-                          ? {
-                              borderColor: logoCores[empresa.id] || "#1e88e5",
-                              boxShadow: `0 0 0 3px ${
-                                logoCores[empresa.id] || "#1e88e5"
-                              }33`,
-                            }
+                          ? (
+                              logoCores[empresa.id] === undefined
+                                ? {} // Não aplica cor enquanto carrega
+                                : {
+                                    borderColor: logoCores[empresa.id] || "black",
+                                    boxShadow: logoCores[empresa.id]
+                                      ? `0 0 0 3px ${logoCores[empresa.id]}33`
+                                      : undefined,
+                                  }
+                            )
                           : {}
                       }
                     >
@@ -218,7 +222,11 @@ const Dashboard = () => {
                       }`}
                       style={
                         isSelected
-                          ? { color: logoCores[empresa.id] || "#1e88e5" }
+                          ? (
+                              logoCores[empresa.id] === undefined
+                                ? {} // Não aplica cor enquanto carrega
+                                : { color: logoCores[empresa.id] || "black" }
+                            )
                           : {}
                       }
                     >
