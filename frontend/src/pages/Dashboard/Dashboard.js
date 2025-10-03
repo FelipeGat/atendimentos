@@ -4,6 +4,7 @@ import { dashboardAPI, empresasAPI } from '../../utils/api';
 import { useMessage } from '../../hooks/useMessage';
 import Message from '../../components/Message';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { getPredomiantColor } from '../../utils/colorUtils';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -22,6 +23,7 @@ const Dashboard = () => {
     const [empresas, setEmpresas] = useState([]);
     // **NOVO:** Estado para a empresa selecionada
     const [empresaIdSelecionada, setEmpresaIdSelecionada] = useState(null);
+    const [logoCores, setLogoCores] = useState({});
 
     const { message, showError } = useMessage();
 
@@ -42,6 +44,25 @@ const Dashboard = () => {
     };
 
     // Função principal para carregar os dados do dashboard
+    // Efeito para carregar as cores das logos
+    useEffect(() => {
+        const carregarCores = async () => {
+            const cores = {};
+            for (const empresa of empresas) {
+                if (empresa.logomarca) {
+                    const imgBaseUrl = process.env.REACT_APP_IMG_BASE_URL || 'http://localhost/atendimentos/backend/uploads';
+                    const logoUrl = `${imgBaseUrl}/logos/${empresa.logomarca}`;
+                    cores[empresa.id] = await getPredomiantColor(logoUrl, empresa.nome_fantasia || empresa.razao_social);
+                }
+            }
+            setLogoCores(cores);
+        };
+        
+        if (empresas.length > 0) {
+            carregarCores();
+        }
+    }, [empresas]);
+
     const fetchDashboardData = async (empresaId) => {
         if (!empresaId) {
             // Não tenta buscar se não houver um ID
@@ -144,7 +165,6 @@ const Dashboard = () => {
                         <>
                         {empresas.map(empresa => {
                             let logoSrc = null;
-                            let borderColor = '#1e88e5';
                             
                             // Usar a logo do diretório de uploads se existir
                             if (empresa.logomarca) {
@@ -154,11 +174,6 @@ const Dashboard = () => {
                                 // Fallback para logo padrão se não houver logo personalizada
                                 logoSrc = require('../../assets/login-illustration.png');
                             }
-
-                            // Define cor da borda baseado no primeiro caractere do nome para ter cores únicas
-                            const colors = ['#1e88e5', '#354F2A', '#2e3486', '#0A3D62', '#6B4C9A', '#922B21'];
-                            const index = empresa.nome.charCodeAt(0) % colors.length;
-                            borderColor = colors[index];
                             
                             const isSelected = empresaIdSelecionada == empresa.id;
                             return (
@@ -166,13 +181,16 @@ const Dashboard = () => {
                                     <button
                                         className={`empresa-logo-btn${isSelected ? ' selected' : ''}`}
                                         onClick={() => setEmpresaIdSelecionada(empresa.id)}
-                                        style={isSelected ? { borderColor: borderColor, boxShadow: `0 0 0 3px ${borderColor}33` } : {}}
+                                        style={isSelected ? { 
+                                            borderColor: logoCores[empresa.id] || '#1e88e5',
+                                            boxShadow: `0 0 0 3px ${logoCores[empresa.id] || '#1e88e5'}33`
+                                        } : {}}
                                     >
                                         <img src={logoSrc} alt={empresa.nome} className="empresa-logo-img" />
                                     </button>
                                     <span
                                         className={`empresa-nome-logo${isSelected ? ' selected' : ''}`}
-                                        style={isSelected ? { color: borderColor } : {}}
+                                        style={isSelected ? { color: logoCores[empresa.id] || '#1e88e5' } : {}}
                                     >
                                         {(isSelected || undefined) ? empresa.nome : ''}
                                     </span>
