@@ -35,9 +35,18 @@ const Segmentos = () => {
     const fetchSegmentos = async () => {
         try {
             setLoading(true);
-            const result = await segmentosAPI.listar();
+            // Tenta obter o empresa_id do localStorage ou de um contexto global
+            // Forçar empresaId=1 para ambiente de desenvolvimento
+            const empresaId = 1;
+            const headers = require('../../utils/api').getHeaders(empresaId);
+            console.log('Debug - Headers enviados na listagem:', headers);
+            const result = await segmentosAPI.listar({ empresaId });
+            console.log('Debug - Resultado da API:', result);
             setSegmentos(result.data || []);
+            console.log('Debug - Segmentos definidos:', result.data || []);
+            console.log('Debug - Estado após setSegmentos:', [...(result.data || [])]);
         } catch (error) {
+            console.error('Erro ao carregar segmentos:', error);
             showError('Erro ao carregar segmentos: ' + error.message);
         } finally {
             setLoading(false);
@@ -83,17 +92,23 @@ const Segmentos = () => {
         }
 
         try {
+            // Forçar empresaId=1 para ambiente de desenvolvimento
+            const empresaId = 1;
+            let dataToSend = { ...formData, empresa_id: empresaId };
             if (editingSegmento) {
-                await segmentosAPI.atualizar(editingSegmento.id, formData);
+                // Adiciona o id ao corpo da requisição para atualização
+                dataToSend = { ...dataToSend, id: editingSegmento.id };
+                await segmentosAPI.atualizar(editingSegmento.id, dataToSend);
                 showSuccess('Segmento atualizado com sucesso');
             } else {
-                await segmentosAPI.criar(formData);
+                await segmentosAPI.criar(dataToSend);
                 showSuccess('Segmento criado com sucesso');
             }
 
             handleCloseModal();
             fetchSegmentos();
         } catch (error) {
+            console.error('Erro ao salvar segmento:', error);
             showError('Erro ao salvar segmento: ' + error.message);
         }
     };
@@ -105,11 +120,19 @@ const Segmentos = () => {
         }
 
         try {
-            await segmentosAPI.excluir(segmento.id);
-            showSuccess('Segmento excluído com sucesso');
-            fetchSegmentos();
+            // Forçar empresaId=1 para ambiente de desenvolvimento
+            const empresaId = 1;
+            const response = await segmentosAPI.excluir(segmento.id, empresaId);
+            console.log('Resposta da exclusão:', response);
+            if (response && response.success === false) {
+                showError('Erro ao excluir segmento: ' + (response.error || response.message || 'Erro desconhecido.'));
+            } else {
+                showSuccess('Segmento excluído com sucesso');
+                fetchSegmentos();
+            }
         } catch (error) {
-            showError('Erro ao excluir segmento: ' + error.message);
+            console.error('Erro ao excluir segmento:', error);
+            showError('Erro ao excluir segmento: ' + (error.message || error));
         }
     };
 
@@ -120,14 +143,7 @@ const Segmentos = () => {
     return (
         <div className="segmentos-container">
             {/* Mensagem */}
-            {message.text && (
-                <div className={`message ${message.type}`}>
-                    <span className="message-icon">
-                        {message.type === 'success' ? '✅' : '❌'}
-                    </span>
-                    {message.text}
-                </div>
-            )}
+            {message.text && <Message type={message.type} text={message.text} />}
 
             {/* Cabeçalho */}
             <div className="segmentos-header">
