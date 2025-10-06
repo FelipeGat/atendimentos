@@ -63,7 +63,7 @@ export const apiRequest = async (endpoint, options = {}) => {
             const data = await response.json();
             if (!response.ok) {
                 // Lança o erro do backend se a resposta for JSON e não for ok
-                throw new Error(data.error || `Erro HTTP: ${response.status}`);
+                throw new Error(data.message || data.error || `Erro HTTP: ${response.status}`);
             }
             return data;
         }
