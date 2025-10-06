@@ -23,13 +23,39 @@ export const getHeaders = (empresaId = null) => {
  */
 const getDefaultHeaders = (isFormData = false, empresaId = null) => {
     const headers = {};
+
+    // Se não foi passado explicitamente, tentar obter do localStorage
+    if (!empresaId) {
+        try {
+            const storedEmpresa = localStorage.getItem('empresa_id');
+            if (storedEmpresa) {
+                empresaId = storedEmpresa;
+            } else {
+                const user = localStorage.getItem('user');
+                if (user) {
+                    const parsed = JSON.parse(user);
+                    empresaId = parsed?.empresa_id || parsed?.empresaId || parsed?.empresa || null;
+                }
+            }
+            // Fallback para desenvolvimento - usar empresa_id=1
+            if (!empresaId) {
+                empresaId = 1;
+            }
+        } catch (e) {
+            // ignore parse errors, usar fallback
+            empresaId = 1;
+        }
+    }
+
     if (empresaId) {
-        // CORREÇÃO CRÍTICA: Adiciona o ID da empresa ao cabeçalho
+        // Adiciona o ID da empresa ao cabeçalho
         headers['X-Empresa-ID'] = empresaId;
     }
+
     if (!isFormData) {
         headers['Content-Type'] = 'application/json';
     }
+
     return headers;
 };
 
@@ -57,6 +83,12 @@ export const apiRequest = async (endpoint, options = {}) => {
     }
 
     try {
+        // Debug: logar requisições DELETE para inspecionar headers e url
+        if (options.method === 'DELETE') {
+            console.debug('[API DEBUG] DELETE Request -> URL:', url);
+            console.debug('[API DEBUG] DELETE Request -> Config:', config);
+        }
+
         const response = await fetch(url, config);
 
         if (response.headers.get('content-type')?.includes('application/json')) {

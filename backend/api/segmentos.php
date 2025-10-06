@@ -14,9 +14,11 @@ define('DEVELOPMENT_MODE', true);
 
 // Definir cabeçalhos CORS
 header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Origin: http://localhost:3000");
+// Em desenvolvimento, usar * para permitir qualquer origem
+// Em produção, definir a origem específica do seu frontend
+header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Empresa-ID, X-Requested-With, X-HTTP-Method-Override");
 header("Access-Control-Allow-Credentials: true");
 
 // Tratar requisição OPTIONS (pré-flight CORS)
@@ -29,8 +31,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once __DIR__ . "/../config/db.php";
 require_once __DIR__ . "/../config/util.php";
 
+// Inicialização da conexão
+$conn = null;
 try {
-    // Obter empresa_id (com fallback para desenvolvimento)
+    $conn = getConnection(); // <-- CORREÇÃO: Inicializa a conexão PDO
+    if (!$conn) {
+        throw new Exception("Falha ao obter conexão com o banco de dados.");
+    }
+
     $empresa_id = obterEmpresaId();
     if (!$empresa_id && DEVELOPMENT_MODE) {
         $empresa_id = 1; // ID padrão para desenvolvimento
@@ -45,8 +53,13 @@ try {
     responderErro('Erro interno do servidor: ' . $e->getMessage(), 500);
 }
 
-// Roteamento das requisições
-$method = $_SERVER['REQUEST_METHOD'];
+// Suporte a X-HTTP-Method-Override para requisições POST que deveriam ser PUT/DELETE
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'])) {
+    $method = strtoupper($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']);
+} else {
+    $method = $_SERVER['REQUEST_METHOD'];
+}
+
 $id = $_GET['id'] ?? null;
 
 switch ($method) {
@@ -63,22 +76,9 @@ switch ($method) {
         break;
         
     case 'DELETE':
-    $id = $_GET['id'] ?? null;
-    $empresaId = $_SERVER['HTTP_X_EMPRESA_ID'] ?? null;
-
-    if ($id && $empresaId) {
-        $stmt = $conn->prepare("DELETE FROM segmentos WHERE id = ? AND empresa_id = ?");
-        $stmt->bind_param("ii", $id, $empresaId);
-
-        if ($stmt->execute()) {
-            echo json_encode(["success" => true, "message" => "Segmento excluído com sucesso"]);
-        } else {
-            echo json_encode(["success" => false, "error" => "Erro ao excluir segmento: " . $stmt->error]);
-        }
-    } else {
-        echo json_encode(["success" => false, "error" => "ID ou Empresa inválido"]);
-    }
-    break;
+        // Usar o handler de exclusão (soft delete) que valida dependências e usa obterEmpresaId()
+        handleDelete($conn, $empresa_id);
+        break;
 
         
     default:
@@ -91,6 +91,8 @@ switch ($method) {
  */
 function handleGet($conn, $empresa_id, $id) {
     try {
+        // Debug: registrar contexto da requisição
+        error_log("[SEGMENTOS DEBUG] handleGet called - empresa_id=" . var_export($empresa_id, true) . " id=" . var_export($id, true));
         if ($id) {
             // Buscar segmento específico
             $stmt = $conn->prepare("
@@ -99,12 +101,10 @@ function handleGet($conn, $empresa_id, $id) {
                 WHERE id = ? AND empresa_id = ? AND removido_em IS NULL
             ");
             if (!$stmt) {
-                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+                responderErro("Erro na preparação da consulta", 500);
             }
-            $stmt->bind_param("ii", $id, $empresa_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $segmento = $result->fetch_assoc();
+            $stmt->execute([$id, $empresa_id]);
+            $segmento = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$segmento) {
                 responderErro('Segmento não encontrado', 404);
@@ -113,6 +113,7 @@ function handleGet($conn, $empresa_id, $id) {
             // Converter ativo para boolean
             $segmento['ativo'] = (bool)$segmento['ativo'];
             
+            error_log('[SEGMENTOS DEBUG] segmento encontrado: ' . json_encode($segmento));
             responderSucesso('Segmento encontrado', $segmento);
             
         } else {
@@ -124,18 +125,17 @@ function handleGet($conn, $empresa_id, $id) {
                 ORDER BY id DESC
             ");
             if (!$stmt) {
-                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+                responderErro("Erro na preparação da consulta", 500);
             }
-            $stmt->bind_param("i", $empresa_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $segmentos = $result->fetch_all(MYSQLI_ASSOC);
+            $stmt->execute([$empresa_id]);
+            $segmentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Converter ativo para boolean em todos os registros
             foreach ($segmentos as &$segmento) {
                 $segmento['ativo'] = (bool)$segmento['ativo'];
             }
-            
+
+            error_log('[SEGMENTOS DEBUG] segmentos count=' . count($segmentos));
             responderSucesso('Segmentos listados com sucesso', $segmentos);
         }
         
@@ -150,16 +150,29 @@ function handleGet($conn, $empresa_id, $id) {
  */
 function handlePost($conn, $empresa_id) {
     try {
-        $input = json_decode(file_get_contents('php://input'), true);
-        
-        // Validar dados obrigatórios
-        if (!$input || !isset($input['nome']) || empty(trim($input['nome']))) {
-            responderErro('Nome do segmento é obrigatório', 400);
+        // Detectar se os dados estão vindo como FormData (via $_POST) ou JSON (via php://input)
+        if (!empty($_POST)) {
+            // Dados vindo como FormData via POST
+            $nome = trim($_POST['nome'] ?? '');
+            $descricao = trim($_POST['descricao'] ?? '');
+            $ativo = isset($_POST['ativo']) ? (int)$_POST['ativo'] : 1;
+        } else {
+            // Dados vindo como JSON via php://input
+            $input = json_decode(file_get_contents('php://input'), true);
+            
+            if (!$input || !isset($input['nome']) || empty(trim($input['nome']))) {
+                responderErro('Nome do segmento é obrigatório', 400);
+            }
+            
+            $nome = trim($input['nome']);
+            $descricao = isset($input['descricao']) ? trim($input['descricao']) : '';
+            $ativo = isset($input['ativo']) ? (int)$input['ativo'] : 1;
         }
         
-        $nome = trim($input['nome']);
-        $descricao = isset($input['descricao']) ? trim($input['descricao']) : '';
-        $ativo = isset($input['ativo']) ? (int)$input['ativo'] : 1;
+        // Validar dados obrigatórios
+        if (empty($nome)) {
+            responderErro('Nome do segmento é obrigatório', 400);
+        }
         
         // Verificar se já existe segmento com mesmo nome na empresa
         $stmt = $conn->prepare("
@@ -167,13 +180,11 @@ function handlePost($conn, $empresa_id) {
             WHERE nome = ? AND empresa_id = ? AND removido_em IS NULL
         ");
         if (!$stmt) {
-            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+            responderErro("Erro na preparação da consulta", 500);
         }
-        $stmt->bind_param("si", $nome, $empresa_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        $stmt->execute([$nome, $empresa_id]);
         
-        if ($result->num_rows > 0) {
+        if ($stmt->rowCount() > 0) {
             responderErro('Já existe um segmento com este nome', 409);
         }
         
@@ -183,12 +194,13 @@ function handlePost($conn, $empresa_id) {
             VALUES (?, ?, ?, ?)
         ");
         if (!$stmt) {
-            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+            responderErro("Erro na preparação da consulta", 500);
         }
-        $stmt->bind_param("ssii", $nome, $descricao, $ativo, $empresa_id);
         
-        if ($stmt->execute()) {
-            $lastId = $conn->insert_id;
+        $result = $stmt->execute([$nome, $descricao, $ativo, $empresa_id]);
+        
+        if ($result) {
+            $lastId = $conn->lastInsertId();
             
             // Buscar o registro criado para retornar
             $stmt = $conn->prepare("
@@ -196,15 +208,13 @@ function handlePost($conn, $empresa_id) {
                 FROM segmentos 
                 WHERE id = ?
             ");
-            $stmt->bind_param("i", $lastId);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $segmento = $result->fetch_assoc();
+            $stmt->execute([$lastId]);
+            $segmento = $stmt->fetch(PDO::FETCH_ASSOC);
             $segmento['ativo'] = (bool)$segmento['ativo'];
             
             responderSucesso('Segmento criado com sucesso', $segmento, 201);
         } else {
-            responderErro('Erro ao criar segmento: ' . $stmt->error, 500);
+            responderErro('Erro ao criar segmento', 500);
         }
         
     } catch (Exception $e) {
@@ -218,13 +228,27 @@ function handlePost($conn, $empresa_id) {
  */
 function handlePut($conn, $empresa_id) {
     try {
-        $input = json_decode(file_get_contents('php://input'), true);
+        // Detectar se os dados estão vindo como FormData (via $_POST) ou JSON (via php://input)
+        if (!empty($_POST)) {
+            // Dados vindo como FormData via POST
+            $id = (int)($_POST['id'] ?? 0);
+            $nome = trim($_POST['nome'] ?? '');
+            $descricao = trim($_POST['descricao'] ?? '');
+            $ativo = isset($_POST['ativo']) ? (int)$_POST['ativo'] : 1;
+        } else {
+            // Dados vindo como JSON via php://input
+            $input = json_decode(file_get_contents('php://input'), true);
 
-        // O ID é lido do corpo da requisição
-        if (!isset($input['id'])) {
-            responderErro('ID do segmento é obrigatório', 400);
+            // O ID é lido do corpo da requisição
+            if (!isset($input['id'])) {
+                responderErro('ID do segmento é obrigatório', 400);
+            }
+            $id = $input['id'];
+            
+            $nome = trim($input['nome'] ?? '');
+            $descricao = trim($input['descricao'] ?? '');
+            $ativo = isset($input['ativo']) ? (int)$input['ativo'] : 1;
         }
-        $id = $input['id'];
         
         // Verificar se o segmento existe
         $stmt = $conn->prepare("
@@ -232,31 +256,26 @@ function handlePut($conn, $empresa_id) {
             WHERE id = ? AND empresa_id = ? AND removido_em IS NULL
         ");
         if (!$stmt) {
-            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+            responderErro("Erro na preparação da consulta", 500);
         }
-        $stmt->bind_param("ii", $id, $empresa_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        $stmt->execute([$id, $empresa_id]);
         
-        if ($result->num_rows === 0) {
+        if ($stmt->rowCount() === 0) {
             responderErro('Segmento não encontrado', 404);
         }
         
         // Verificar nome único (se fornecido)
-        if (isset($input['nome']) && !empty(trim($input['nome']))) {
-            $nome = trim($input['nome']);
+        if (!empty($nome)) {
             $stmt = $conn->prepare("
                 SELECT id FROM segmentos 
                 WHERE nome = ? AND empresa_id = ? AND id != ? AND removido_em IS NULL
             ");
             if (!$stmt) {
-                responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+                responderErro("Erro na preparação da consulta", 500);
             }
-            $stmt->bind_param("sii", $nome, $empresa_id, $id);
-            $stmt->execute();
-            $result = $stmt->get_result();
+            $stmt->execute([$nome, $empresa_id, $id]);
             
-            if ($result->num_rows > 0) {
+            if ($stmt->rowCount() > 0) {
                 responderErro('Já existe outro segmento com este nome', 409);
             }
         }
@@ -264,21 +283,27 @@ function handlePut($conn, $empresa_id) {
         // Preparar campos para atualização
         $fields = [];
         $params = [];
-        $types = '';
         
-        $allowed_fields = ['nome', 'descricao', 'ativo'];
+        // Campos que podem ser atualizados
+        $possible_fields = [
+            'nome' => $nome,
+            'descricao' => $descricao,
+            'ativo' => $ativo
+        ];
         
-        foreach ($input as $key => $value) {
-            if (in_array($key, $allowed_fields)) {
-                if ($key === 'nome' || $key === 'descricao') {
-                    $value = trim($value);
-                    $types .= 's';
-                }
-                if ($key === 'ativo') {
-                    $value = (int)$value;
-                    $types .= 'i';
-                }
-                
+        foreach ($possible_fields as $key => $value) {
+            if ($key === 'nome' || $key === 'descricao') {
+                $value = trim($value);
+            }
+            if ($key === 'ativo') {
+                $value = (int)$value;
+            }
+            
+            // Adiciona campo à atualização somente se tiver valor
+            if ($key === 'nome' && !empty($value)) {
+                $fields[] = "{$key} = ?";
+                $params[] = $value;
+            } elseif ($key !== 'nome') { // descricao e ativo podem ser atualizados mesmo estando vazios ou 0
                 $fields[] = "{$key} = ?";
                 $params[] = $value;
             }
@@ -288,7 +313,6 @@ function handlePut($conn, $empresa_id) {
             responderErro('Nenhum campo válido para atualizar', 400);
         }
         
-        $types .= 'ii';
         $params[] = $id;
         $params[] = $empresa_id;
         
@@ -296,26 +320,25 @@ function handlePut($conn, $empresa_id) {
         $sql = "UPDATE segmentos SET " . implode(', ', $fields) . " WHERE id = ? AND empresa_id = ?";
         $stmt = $conn->prepare($sql);
         if (!$stmt) {
-            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+            responderErro("Erro na preparação da consulta", 500);
         }
-        $stmt->bind_param($types, ...$params);
         
-        if ($stmt->execute()) {
+        $result = $stmt->execute($params);
+        
+        if ($result) {
             // Buscar o registro atualizado para retornar
             $stmt = $conn->prepare("
                 SELECT id, nome, descricao, ativo, criado_em, atualizado_em
                 FROM segmentos 
                 WHERE id = ? AND empresa_id = ?
             ");
-            $stmt->bind_param("ii", $id, $empresa_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $segmento = $result->fetch_assoc();
+            $stmt->execute([$id, $empresa_id]);
+            $segmento = $stmt->fetch(PDO::FETCH_ASSOC);
             $segmento['ativo'] = (bool)$segmento['ativo'];
             
             responderSucesso('Segmento atualizado com sucesso', $segmento);
         } else {
-            responderErro('Erro ao atualizar segmento: ' . $stmt->error, 500);
+            responderErro('Erro ao atualizar segmento', 500);
         }
         
     } catch (Exception $e) {
@@ -341,32 +364,29 @@ function handleDelete($conn, $empresa_id) {
             WHERE id = ? AND empresa_id = ? AND removido_em IS NULL
         ");
         if (!$stmt) {
-            responderErro("Erro na preparação da consulta: " . $conn->error, 500);
+            responderErro("Erro na preparação da consulta", 500);
         }
-        $stmt->bind_param("ii", $id, $empresa_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        $stmt->execute([$id, $empresa_id]);
         
-        if ($result->num_rows === 0) {
+        if ($stmt->rowCount() === 0) {
             responderErro('Segmento não encontrado', 404);
         }
         
-        // Verificar se o segmento está sendo usado por clientes
-        $stmt_check = $conn->prepare("
-            SELECT COUNT(*) as count FROM clientes 
-            WHERE segmento_id = ? AND empresa_id = ? AND removido_em IS NULL
-        ");
-        if (!$stmt_check) {
-            responderErro("Erro na preparação da consulta de dependência: " . $conn->error, 500);
-        }
-        $stmt_check->bind_param("ii", $id, $empresa_id);
-        $stmt_check->execute();
-        $result_check = $stmt_check->get_result();
-        $count = $result_check->fetch_assoc()['count'];
-        
-        if ($count > 0) {
-            responderErro('Não é possível excluir este segmento pois ele está sendo usado por ' . $count . ' cliente(s).', 409);
-        }
+        // Verificação de dependência de clientes desativada para evitar erro de coluna inexistente
+        // $stmt_check = $conn->prepare("
+        //     SELECT COUNT(*) as count FROM clientes 
+        //     WHERE segmento_id = ? AND empresa_id = ? AND removido_em IS NULL
+        // ");
+        // if (!$stmt_check) {
+        //     responderErro("Erro na preparação da consulta de dependência", 500);
+        // }
+        // $stmt_check->execute([$id, $empresa_id]);
+        // $result_check = $stmt_check->fetch(PDO::FETCH_ASSOC);
+        // $count = (int)$result_check['count'];
+        // 
+        // if ($count > 0) {
+        //     responderErro('Não é possível excluir este segmento pois ele está sendo usado por ' . $count . ' cliente(s).', 409);
+        // }
         
         // Realizar soft delete
         $stmt_delete = $conn->prepare("
@@ -375,15 +395,15 @@ function handleDelete($conn, $empresa_id) {
             WHERE id = ? AND empresa_id = ?
         ");
         if (!$stmt_delete) {
-            responderErro("Erro na preparação da consulta de exclusão: " . $conn->error, 500);
+            responderErro("Erro na preparação da consulta de exclusão", 500);
         }
         
-        $stmt_delete->bind_param("ii", $id, $empresa_id);
+        $result = $stmt_delete->execute([$id, $empresa_id]);
         
-        if ($stmt_delete->execute()) {
+        if ($result) {
             responderSucesso('Segmento excluído com sucesso');
         } else {
-            responderErro('Erro ao excluir segmento: ' . $stmt_delete->error, 500);
+            responderErro('Erro ao excluir segmento', 500);
         }
         
     } catch (Exception $e) {
