@@ -246,3 +246,128 @@ export const orcamentosAPI = {
     atualizar: (id, data) => api.put('orcamentos.php', id, data, { empresaId: data.empresa_id }),
     excluir: (id, empresaId) => api.delete('orcamentos.php', id, { empresaId })
 };
+
+/**
+ * APIs do Módulo Financeiro
+ * Adicionar estas funções ao arquivo api.js existente
+ */
+
+/**
+ * Fornecedores API
+ */
+export const fornecedoresAPI = {
+    listar: (params = {}) => api.get('fornecedores.php', null, { empresaId: params.empresaId }),
+    buscar: (id, params = {}) => api.get('fornecedores.php', id, { empresaId: params.empresaId }),
+    criar: (data) => api.post('fornecedores.php', data, { empresaId: data.empresa_id }),
+    atualizar: (id, data) => api.put('fornecedores.php', id, data, { empresaId: data.empresa_id }),
+    excluir: (id, empresaId) => api.delete('fornecedores.php', id, { empresaId })
+};
+
+/**
+ * Contas Bancárias API
+ */
+export const contasBancariasAPI = {
+    listar: (params = {}) => api.get('contas_bancarias.php', null, { empresaId: params.empresaId }),
+    buscar: (id, params = {}) => api.get('contas_bancarias.php', id, { empresaId: params.empresaId }),
+    criar: (data) => api.post('contas_bancarias.php', data, { empresaId: data.empresa_id }),
+    atualizar: (id, data) => api.put('contas_bancarias.php', id, data, { empresaId: data.empresa_id }),
+    excluir: (id, empresaId) => api.delete('contas_bancarias.php', id, { empresaId }),
+
+    // Movimentações
+    listarMovimentacoes: (contaId = null, params = {}) => {
+        const endpoint = contaId
+            ? `contas_bancarias.php?action=movimentacoes&conta_id=${contaId}`
+            : 'contas_bancarias.php?action=movimentacoes';
+        return api.get(endpoint, null, { empresaId: params.empresaId });
+    },
+
+    // Transferência entre contas
+    transferir: (data) => apiRequest('contas_bancarias.php?action=transferencia', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        empresaId: data.empresa_id
+    }),
+
+    // Registrar movimentação manual
+    registrarMovimentacao: (data) => apiRequest('contas_bancarias.php?action=movimentacao', {
+        method: 'POST',
+        body: JSON.stringify(data),
+        empresaId: data.empresa_id
+    })
+};
+
+/**
+ * Contas a Pagar API
+ */
+export const contasPagarAPI = {
+    listar: (params = {}) => api.get('contas_pagar.php', null, { empresaId: params.empresaId }),
+    buscar: (id, params = {}) => api.get('contas_pagar.php', id, { empresaId: params.empresaId }),
+    criar: (data) => api.post('contas_pagar.php', data, { empresaId: data.empresa_id }),
+    atualizar: (id, data) => api.put('contas_pagar.php', id, data, { empresaId: data.empresa_id }),
+    excluir: (id, empresaId) => api.delete('contas_pagar.php', id, { empresaId }),
+
+    // Filtros específicos
+    listarVencidas: (params = {}) => api.get('contas_pagar.php?action=vencidas', null, { empresaId: params.empresaId }),
+    listarAVencer: (params = {}) => api.get('contas_pagar.php?action=a_vencer', null, { empresaId: params.empresaId }),
+
+    // Registrar pagamento
+    registrarPagamento: (id, data) => apiRequest(`contas_pagar.php?action=pagar&id=${id}`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        empresaId: data.empresa_id
+    })
+};
+
+/**
+ * Contas a Receber API
+ */
+export const contasReceberAPI = {
+    listar: (params = {}) => api.get('contas_receber.php', null, { empresaId: params.empresaId }),
+    buscar: (id, params = {}) => api.get('contas_receber.php', id, { empresaId: params.empresaId }),
+    criar: (data) => api.post('contas_receber.php', data, { empresaId: data.empresa_id }),
+    atualizar: (id, data) => api.put('contas_receber.php', id, data, { empresaId: data.empresa_id }),
+    excluir: (id, empresaId) => api.delete('contas_receber.php', id, { empresaId }),
+
+    // Filtros específicos
+    listarVencidas: (params = {}) => api.get('contas_receber.php?action=vencidas', null, { empresaId: params.empresaId }),
+    listarAVencer: (params = {}) => api.get('contas_receber.php?action=a_vencer', null, { empresaId: params.empresaId }),
+
+    // Registrar recebimento
+    registrarRecebimento: (id, data) => apiRequest(`contas_receber.php?action=receber&id=${id}`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        empresaId: data.empresa_id
+    })
+};
+
+/**
+ * Dashboard Financeiro API
+ */
+export const dashboardFinanceiroAPI = {
+    obterDados: (params = {}) => api.get('dashboard_financeiro.php', null, { empresaId: params.empresaId })
+};
+
+/**
+ * Lançamentos Recorrentes API
+ */
+export const lancamentosRecorrentesAPI = {
+    listar: (params = {}) => api.get('lancamentos_recorrentes.php', null, { empresaId: params.empresaId }),
+    buscar: (id, params = {}) => api.get('lancamentos_recorrentes.php', id, { empresaId: params.empresaId }),
+    criar: (data) => api.post('lancamentos_recorrentes.php', data, { empresaId: data.empresa_id }),
+    atualizar: (id, data) => api.put('lancamentos_recorrentes.php', id, data, { empresaId: data.empresa_id }),
+    excluir: (id, empresaId) => api.delete('lancamentos_recorrentes.php', id, { empresaId }),
+
+    // Gerar lançamentos
+    gerar: (params = {}) => api.get('lancamentos_recorrentes.php?action=gerar', null, { empresaId: params.empresaId })
+};
+
+/**
+ * Categorias Financeiras API
+ */
+export const categoriasFinanceirasAPI = {
+    listar: (params = {}) => api.get('categorias_financeiras.php', null, { empresaId: params.empresaId }),
+    buscar: (id, params = {}) => api.get('categorias_financeiras.php', id, { empresaId: params.empresaId }),
+    criar: (data) => api.post('categorias_financeiras.php', data, { empresaId: data.empresa_id }),
+    atualizar: (id, data) => api.put('categorias_financeiras.php', id, data, { empresaId: data.empresa_id }),
+    excluir: (id, empresaId) => api.delete('categorias_financeiras.php', id, { empresaId })
+};

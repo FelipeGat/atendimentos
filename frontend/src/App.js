@@ -15,6 +15,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import './App.css';
 import EditarUsuario from './pages/Usuarios/EditarUsuario';
+import DashboardFinanceiro from './pages/Financeiro/DashboardFinanceiro';
 
 function App() {
   // Determinar o basename com base no ambiente e na URL
@@ -23,7 +24,7 @@ function App() {
     if (process.env.NODE_ENV === 'production') {
       return '/gestao';
     }
-    
+
     // Em desenvolvimento, determinar com base na URL
     // Se estiver servindo em http://localhost:3000/Atendimentos/, usar /Atendimentos
     // Se estiver servindo em http://localhost:3000/, não usar basename
@@ -31,7 +32,7 @@ function App() {
     if (pathname.startsWith('/Atendimentos')) {
       return '/Atendimentos';
     }
-    
+
     // Por padrão, não usar basename em desenvolvimento
     return '';
   };
@@ -100,6 +101,10 @@ function App() {
           <Route
             path="/empresas"
             element={<ProtectedRoute><Layout><Empresas /></Layout></ProtectedRoute>}
+          />
+          <Route
+            path="/DashboardFinanceiro"
+            element={<ProtectedRoute><Layout><DashboardFinanceiro /></Layout></ProtectedRoute>}
           />
         </Routes>
       </div>

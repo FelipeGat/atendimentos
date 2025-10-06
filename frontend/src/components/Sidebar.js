@@ -124,7 +124,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
                 </MenuSection>
 
                 <MenuSection title="Financeiro" icon={<FaMoneyBillWave />} isCollapsed={isCollapsed}>
-                    <MenuItem to="/financeiro/dashboard" icon={<FaChartPie />} text="Dashboard Financeiro" isCollapsed={isCollapsed} />
+                    <MenuItem to="/dashboardfinanceiro" icon={<FaChartPie />} text="Dashboard Financeiro" isCollapsed={isCollapsed} />
                     <MenuItem to="/financeiro/contas" icon={<FaExchangeAlt />} text="Contas a Pagar/Receber" isCollapsed={isCollapsed} />
                     <MenuItem to="/financeiro/recorrentes" icon={<FaStream />} text="Lançamentos Recorrentes" isCollapsed={isCollapsed} />
                     <MenuItem to="/financeiro/bancos" icon={<FaDatabase />} text="Contas Bancárias" isCollapsed={isCollapsed} />
