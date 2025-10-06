@@ -51,9 +51,11 @@ const Clientes = () => {
     const fetchData = async () => {
         try {
             setLoading(true);
+            // Forçar empresaId=1 para ambiente de desenvolvimento
+            const empresaId = 1; // Forçar empresaId=1 para ambiente de desenvolvimento
             const [clientesResult, segmentosResult] = await Promise.all([
-                clientesAPI.listar(),
-                segmentosAPI.listar()
+                clientesAPI.listar({ empresaId }),
+                segmentosAPI.listar({ empresaId })
             ]);
 
             setClientes(clientesResult.data || []);
@@ -258,9 +260,10 @@ const Clientes = () => {
         }
 
         try {
+            const empresaId = 1; // Forçar empresaId=1 para ambiente de desenvolvimento
             const dataToSave = {
                 ...formData,
-                id: editingCliente ? editingCliente.id : undefined, // Adiciona o ID no corpo da requisição para atualização
+                id: editingCliente ? editingCliente.id : undefined,
                 nome: formData.nome.trim(),
                 email: formData.email.trim(),
                 telefone: formData.telefone.trim(),
@@ -272,15 +275,16 @@ const Clientes = () => {
                 cep: formData.cep.replace(/\D/g, ''),
                 observacoes: formData.observacoes.trim(),
                 segmentos_ids: formData.segmentos_ids.map(id => parseInt(id)),
+                empresa_id: empresaId
             };
 
             if (editingCliente) {
-                await clientesAPI.atualizar(editingCliente.id, dataToSave);
+                await clientesAPI.atualizar(editingCliente.id, dataToSave, { empresaId });
                 showSuccess('Cliente atualizado com sucesso');
             } else {
                 // Remover o ID do objeto de dados para criação (não é necessário)
                 delete dataToSave.id;
-                await clientesAPI.criar(dataToSave);
+                await clientesAPI.criar(dataToSave, { empresaId });
                 showSuccess('Cliente criado com sucesso');
             }
 
@@ -300,7 +304,8 @@ const Clientes = () => {
         }
 
         try {
-            await clientesAPI.excluir(cliente.id);
+            const empresaId = 1; // Forçar empresaId=1 para ambiente de desenvolvimento
+            await clientesAPI.excluir(cliente.id, empresaId);
             showSuccess('Cliente excluído com sucesso');
             fetchData();
         } catch (error) {

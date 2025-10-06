@@ -29,6 +29,9 @@ define('DEVELOPMENT_MODE', true);
 require_once __DIR__ . "/../config/db.php";
 require_once __DIR__ . "/../config/util.php";
 
+// Logar todos os headers recebidos para depuração
+error_log('[CLIENTES DEBUG] HEADERS: ' . json_encode(getallheaders()));
+
 try {
     $conn = getConnection(); // Adiciona a inicialização da conexão
     if (!$conn) {
@@ -218,6 +221,7 @@ function handlePost($conn, $empresa_id) {
 function handlePut($conn, $empresa_id) {
     try {
         $input = json_decode(file_get_contents('php://input'), true);
+        error_log('[CLIENTES DEBUG] handlePut - empresa_id=' . var_export($empresa_id, true) . ' input=' . json_encode($input));
 
         if (!isset($input['id'])) {
             responderErro('ID do cliente é obrigatório', 400);
@@ -228,7 +232,9 @@ function handlePut($conn, $empresa_id) {
 
         $stmt = $conn->prepare("SELECT id FROM clientes WHERE id = ? AND empresa_id = ? AND removido_em IS NULL");
         $stmt->execute([$id, $empresa_id]);
-        if (!$stmt->fetch()) {
+        $row = $stmt->fetch();
+        error_log('[CLIENTES DEBUG] handlePut - resultado SELECT id: ' . var_export($row, true));
+        if (!$row) {
             $conn->rollBack();
             responderErro('Cliente não encontrado', 404);
         }
