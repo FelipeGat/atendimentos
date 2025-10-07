@@ -5,6 +5,7 @@ import { useMessage } from "../../hooks/useMessage";
 import Message from "../../components/Message";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import { getPredomiantColor } from "../../utils/colorUtils";
+import { formatDate } from "../../utils/dateUtils";
 import "./Dashboard.css";
 
 const Dashboard = () => {
@@ -120,14 +121,7 @@ const Dashboard = () => {
     }).format(value);
   };
 
-  // Formatar data
-  const formatDate = (dateString) => {
-    if (!dateString) return "-";
-    const date = new Date(
-      dateString.includes("T") ? dateString : dateString + "T00:00:00"
-    );
-    return date.toLocaleDateString("pt-BR");
-  };
+
 
   // Obter cor para prioridade
   const getPriorityColor = (prioridade) => {
