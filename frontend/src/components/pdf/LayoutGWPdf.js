@@ -308,7 +308,23 @@ const formatCurrency = (value) => {
 
 const formatDate = (dateString) => {
     if (!dateString) return new Date().toLocaleDateString('pt-BR');
-    const date = new Date(dateString);
+    
+    let date;
+    // Verificar se a string de data contém o formato MySQL DATETIME (YYYY-MM-DD HH:MM:SS)
+    if (typeof dateString === 'string' && dateString.includes(' ')) {
+        // Converter o formato MySQL (YYYY-MM-DD HH:MM:SS) para o formato ISO (YYYY-MM-DDTHH:MM:SS)
+        const isoDateString = dateString.replace(' ', 'T');
+        date = new Date(isoDateString);
+    } else {
+        date = new Date(dateString);
+    }
+    
+    // Verificar se a data é válida
+    if (isNaN(date.getTime())) {
+        console.warn(`Data inválida: ${dateString}`);
+        return new Date().toLocaleDateString('pt-BR');
+    }
+    
     return date.toLocaleDateString('pt-BR');
 };
 
