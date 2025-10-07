@@ -1,0 +1,244 @@
+/* Contas Bancárias */
+.contas-bancarias-container {
+    padding: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Resumo Saldo */
+.resumo-saldo {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.resumo-saldo h2 {
+    color: white;
+    font-size: 18px;
+    margin: 0 0 10px 0;
+    font-weight: 500;
+}
+
+.saldo-total {
+    color: white;
+    font-size: 42px;
+    font-weight: 700;
+    margin: 0;
+}
+
+/* Lista de Contas */
+.lista-contas {
+    display: grid;
+    gap: 20px;
+}
+
+.conta-card {
+    background: white;
+    border-radius: 12px;
+    padding: 25px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-left: 4px solid #007bff;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.conta-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.conta-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+}
+
+.conta-info h3 {
+    font-size: 22px;
+    color: #1f2937;
+    margin: 0 0 8px 0;
+}
+
+.conta-banco {
+    font-size: 14px;
+    color: #6B7280;
+    margin: 0 0 5px 0;
+}
+
+.conta-detalhes {
+    font-size: 13px;
+    color: #9CA3AF;
+    margin: 0;
+}
+
+.conta-saldo {
+    text-align: right;
+}
+
+.conta-saldo .label {
+    display: block;
+    font-size: 13px;
+    color: #6B7280;
+    margin-bottom: 5px;
+}
+
+.conta-saldo .valor {
+    font-size: 32px;
+    font-weight: 700;
+}
+
+.conta-saldo .valor.positivo {
+    color: #10B981;
+}
+
+.conta-saldo .valor.negativo {
+    color: #EF4444;
+}
+
+.conta-acoes {
+    display: flex;
+    gap: 10px;
+    padding-top: 15px;
+    border-top: 1px solid #F3F4F6;
+}
+
+.btn-history {
+    background: #6B7280;
+    color: white;
+    padding: 8px 15px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-history:hover {
+    background: #4B5563;
+}
+
+/* Modal Específicos */
+.modal-transferencia,
+.modal-historico {
+    max-width: 500px;
+}
+
+.modal-historico {
+    max-width: 600px;
+}
+
+/* Histórico */
+.historico-lista {
+    max-height: 400px;
+    overflow-y: auto;
+    margin: 20px 0;
+}
+
+.historico-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: #F9FAFB;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+.historico-item.entrada {
+    border-left: 3px solid #10B981;
+}
+
+.historico-item.saida {
+    border-left: 3px solid #EF4444;
+}
+
+.historico-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: white;
+}
+
+.historico-item.entrada .historico-icon {
+    background: #10B981;
+}
+
+.historico-item.saida .historico-icon {
+    background: #EF4444;
+}
+
+.historico-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.historico-info strong {
+    color: #1f2937;
+    font-size: 14px;
+}
+
+.historico-info small {
+    color: #6B7280;
+    font-size: 12px;
+}
+
+.historico-info .categoria {
+    display: inline-block;
+    background: #E5E7EB;
+    color: #374151;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.historico-valor {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.historico-valor.entrada {
+    color: #10B981;
+}
+
+.historico-valor.saida {
+    color: #EF4444;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .header-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .header-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .conta-header {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .conta-saldo {
+        text-align: left;
+    }
+
+    .conta-acoes {
+        flex-wrap: wrap;
+    }
+}

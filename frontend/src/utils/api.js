@@ -340,6 +340,15 @@ export const contasReceberAPI = {
     })
 };
 
+export const produtosServicosAPI = {
+    listar: (params = {}) => api.get('produtos_servicos.php', null, { empresaId: params.empresaId }),
+    buscar: (id, params = {}) => api.get('produtos_servicos.php', id, { empresaId: params.empresaId }),
+    criar: (data) => api.post('produtos_servicos.php', data, { empresaId: data.empresa_id }),
+    atualizar: (id, data) => api.put('produtos_servicos.php', id, data, { empresaId: data.empresa_id }),
+    excluir: (id, empresaId) => api.delete('produtos_servicos.php', id, { empresaId }),
+    gerarCodigoBarras: () => api.get('produtos_servicos.php?action=gerar_codigo_barras')
+};
+
 /**
  * Dashboard Financeiro API
  */

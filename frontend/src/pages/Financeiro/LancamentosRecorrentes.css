@@ -1,0 +1,164 @@
+/* Lançamentos Recorrentes */
+.lancamentos-recorrentes-container {
+    padding: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Filtros */
+.filtros {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+}
+
+.filtro-btn {
+    padding: 10px 20px;
+    border: 2px solid #E5E7EB;
+    background: white;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #6B7280;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.filtro-btn:hover {
+    border-color: #007bff;
+    color: #007bff;
+}
+
+.filtro-btn.active {
+    background: #007bff;
+    border-color: #007bff;
+    color: white;
+}
+
+/* Lista de Lançamentos */
+.lista-lancamentos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+}
+
+.lancamento-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-left: 4px solid #007bff;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.lancamento-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.lancamento-card.pagar {
+    border-left-color: #EF4444;
+}
+
+.lancamento-card.receber {
+    border-left-color: #10B981;
+}
+
+.lancamento-card.inativo {
+    opacity: 0.6;
+}
+
+.lancamento-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.lancamento-tipo {
+    font-size: 14px;
+    font-weight: 600;
+    color: #6B7280;
+}
+
+.lancamento-status .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge-ativo {
+    background: #D1FAE5;
+    color: #065F46;
+}
+
+.badge-inativo {
+    background: #FEE2E2;
+    color: #991B1B;
+}
+
+.lancamento-body h3 {
+    font-size: 18px;
+    color: #1f2937;
+    margin: 0 0 15px 0;
+}
+
+.lancamento-info {
+    display: grid;
+    gap: 10px;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #F3F4F6;
+}
+
+.info-item:last-child {
+    border-bottom: none;
+}
+
+.info-item .label {
+    font-size: 13px;
+    color: #6B7280;
+}
+
+.info-item .valor {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.lancamento-acoes {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #F3F4F6;
+}
+
+/* Modal Lançamento */
+.modal-lancamento {
+    max-width: 700px;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .lista-lancamentos {
+        grid-template-columns: 1fr;
+    }
+
+    .filtros {
+        flex-direction: column;
+    }
+
+    .filtro-btn {
+        width: 100%;
+    }
+}
