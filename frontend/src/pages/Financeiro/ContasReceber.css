@@ -1,0 +1,43 @@
+/* Contas a Receber - Herda estilos de Contas a Pagar e adiciona específicos */
+@import './ContasPagar.css';
+
+.contas-receber-container {
+    padding: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.valor-recebido {
+    font-size: 28px;
+    font-weight: 700;
+    color: #10B981;
+    margin: 0;
+}
+
+.status-recebido {
+    background: #D1FAE5;
+    color: #065F46;
+}
+
+/* Botões de cobrança */
+.btn-whatsapp {
+    background: #25D366;
+    color: white;
+}
+
+.btn-whatsapp:hover {
+    background: #1DA851;
+}
+
+.btn-email {
+    background: #3B82F6;
+    color: white;
+}
+
+.btn-email:hover {
+    background: #2563EB;
+}
+
+.modal-recebimento {
+    max-width: 500px;
+}

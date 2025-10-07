@@ -121,14 +121,15 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
                     <MenuItem to="/clientes" icon={<FaUsers />} text="Clientes" isCollapsed={isCollapsed} />
                     <MenuItem to="/segmentos" icon={<FaStream />} text="Segmentos" isCollapsed={isCollapsed} />
                     <MenuItem to="/assuntos" icon={<FaComments />} text="Assuntos" isCollapsed={isCollapsed} />
+                    <MenuItem to="/produtos-servicos" icon={<FaBoxOpen />} text="Produtos/Serviços" isCollapsed={isCollapsed} />
                 </MenuSection>
 
                 <MenuSection title="Financeiro" icon={<FaMoneyBillWave />} isCollapsed={isCollapsed}>
                     <MenuItem to="/dashboardfinanceiro" icon={<FaChartPie />} text="Dashboard Financeiro" isCollapsed={isCollapsed} />
-                    <MenuItem to="/financeiro/contas" icon={<FaExchangeAlt />} text="Contas a Pagar/Receber" isCollapsed={isCollapsed} />
-                    <MenuItem to="/financeiro/recorrentes" icon={<FaStream />} text="Lançamentos Recorrentes" isCollapsed={isCollapsed} />
-                    <MenuItem to="/financeiro/bancos" icon={<FaDatabase />} text="Contas Bancárias" isCollapsed={isCollapsed} />
-                    <MenuItem to="/financeiro/produtos" icon={<FaBoxOpen />} text="Produtos/Serviços" isCollapsed={isCollapsed} />
+                    <MenuItem to="/contaspagar" icon={<FaExchangeAlt />} text="Contas à Pagar" isCollapsed={isCollapsed} />
+                    <MenuItem to="/contasreceber" icon={<FaExchangeAlt />} text="Contas à Receber" isCollapsed={isCollapsed} />
+                    <MenuItem to="/lancamentosrecorrentes" icon={<FaStream />} text="Lançamentos Recorrentes" isCollapsed={isCollapsed} />
+                    <MenuItem to="/contasbancarias" icon={<FaDatabase />} text="Contas Bancárias" isCollapsed={isCollapsed} />
                 </MenuSection>
             </nav>
         </div>

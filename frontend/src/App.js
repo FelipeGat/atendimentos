@@ -16,6 +16,12 @@ import Layout from './components/Layout';
 import './App.css';
 import EditarUsuario from './pages/Usuarios/EditarUsuario';
 import DashboardFinanceiro from './pages/Financeiro/DashboardFinanceiro';
+import ContasPagar from './pages/Financeiro/ContasPagar';
+import ContasReceber from './pages/Financeiro/ContasReceber';
+import LancamentosRecorrentes from './pages/Financeiro/LancamentosRecorrentes';
+import ContasBancarias from './pages/Financeiro/ContasBancarias';
+import ProdutosServicos from './pages/Produtos/ProdutosServicos';
+
 
 function App() {
   // Determinar o basename com base no ambiente e na URL
@@ -62,13 +68,11 @@ function App() {
             element={<ProtectedRoute><Layout><Clientes /></Layout></ProtectedRoute>}
           />
 
-          {/* Lista de usuários */}
           <Route
             path="/usuarios"
             element={<ProtectedRoute><Layout><Usuarios /></Layout></ProtectedRoute>}
           />
 
-          {/* Edição de usuário */}
           <Route
             path="/usuarios/editar/:id"
             element={<ProtectedRoute><Layout><EditarUsuario /></Layout></ProtectedRoute>}
@@ -85,6 +89,10 @@ function App() {
           <Route
             path="/atendimentos"
             element={<ProtectedRoute><Layout><Atendimentos /></Layout></ProtectedRoute>}
+          />
+          <Route
+            path="/produtos-servicos"
+            element={<ProtectedRoute><Layout><ProdutosServicos /></Layout></ProtectedRoute>}
           />
           <Route
             path="/dashboard"
@@ -105,6 +113,22 @@ function App() {
           <Route
             path="/DashboardFinanceiro"
             element={<ProtectedRoute><Layout><DashboardFinanceiro /></Layout></ProtectedRoute>}
+          />
+          <Route
+            path="/ContasPagar"
+            element={<ProtectedRoute><Layout><ContasPagar /></Layout></ProtectedRoute>}
+          />
+          <Route
+            path="/ContasReceber"
+            element={<ProtectedRoute><Layout><ContasReceber /></Layout></ProtectedRoute>}
+          />
+          <Route
+            path="/LancamentosRecorrentes"
+            element={<ProtectedRoute><Layout><LancamentosRecorrentes /></Layout></ProtectedRoute>}
+          />
+          <Route
+            path="/ContasBancarias"
+            element={<ProtectedRoute><Layout><ContasBancarias /></Layout></ProtectedRoute>}
           />
         </Routes>
       </div>
