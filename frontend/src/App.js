@@ -21,6 +21,7 @@ import ContasReceber from './pages/Financeiro/ContasReceber';
 import LancamentosRecorrentes from './pages/Financeiro/LancamentosRecorrentes';
 import ContasBancarias from './pages/Financeiro/ContasBancarias';
 import ProdutosServicos from './pages/Produtos/ProdutosServicos';
+import Fornecedores from './pages/Fornecedores/Fornecedores';
 
 
 function App() {
@@ -113,6 +114,10 @@ function App() {
           <Route
             path="/DashboardFinanceiro"
             element={<ProtectedRoute><Layout><DashboardFinanceiro /></Layout></ProtectedRoute>}
+          />
+          <Route
+            path="/Fornecedores"
+            element={<ProtectedRoute><Layout><Fornecedores /></Layout></ProtectedRoute>}
           />
           <Route
             path="/ContasPagar"

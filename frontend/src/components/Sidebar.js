@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import './Sidebar.css';
 import {
-    FaTachometerAlt, FaFileAlt, FaUsers, FaTools, FaBuilding, FaStream,
+    FaTachometerAlt, FaFileAlt, FaTruck, FaUsers, FaTools, FaBuilding, FaStream,
     FaComments, FaUserCircle, FaSignOutAlt, FaEdit, FaAngleLeft, FaClipboardList,
     FaMoneyBillWave, FaChevronDown, FaChartPie, FaExchangeAlt, FaDatabase, FaBoxOpen
 } from 'react-icons/fa';
@@ -76,7 +76,6 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
     return (
         <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
             <div className="sidebar-header">
-                {/* ... (código do header sem alterações) ... */}
                 {!isCollapsed && (
                     <div className="user-profile">
                         {currentUser?.foto ? (
@@ -126,6 +125,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
 
                 <MenuSection title="Financeiro" icon={<FaMoneyBillWave />} isCollapsed={isCollapsed}>
                     <MenuItem to="/dashboardfinanceiro" icon={<FaChartPie />} text="Dashboard Financeiro" isCollapsed={isCollapsed} />
+                    <MenuItem to="/fornecedores" icon={<FaTruck />} text="Fornecedores" isCollapsed={isCollapsed} />
                     <MenuItem to="/contaspagar" icon={<FaExchangeAlt />} text="Contas à Pagar" isCollapsed={isCollapsed} />
                     <MenuItem to="/contasreceber" icon={<FaExchangeAlt />} text="Contas à Receber" isCollapsed={isCollapsed} />
                     <MenuItem to="/lancamentosrecorrentes" icon={<FaStream />} text="Lançamentos Recorrentes" isCollapsed={isCollapsed} />

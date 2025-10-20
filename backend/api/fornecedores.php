@@ -1,11 +1,12 @@
 <?php
 /**
  * API de Fornecedores
- * Gerenciamento de fornecedores do módulo financeiro
+ * Gerenciamento de fornecedores (Pessoa Física e Jurídica)
  */
 
 require_once __DIR__ . "/../config/cors.php";
 require_once __DIR__ . "/../config/db.php";
+require_once __DIR__ . "/../config/util.php";
 
 $metodo = $_SERVER["REQUEST_METHOD"];
 $empresaId = obterEmpresaId();
@@ -58,10 +59,10 @@ function listarFornecedores($empresaId, $conn) {
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("i", $empresaId);
     $stmt->execute();
-    $resultado = $stmt->get_result();
+    $result = $stmt->get_result();
     
     $fornecedores = [];
-    while ($row = $resultado->fetch_assoc()) {
+    while ($row = $result->fetch_assoc()) {
         $fornecedores[] = $row;
     }
     
@@ -69,7 +70,7 @@ function listarFornecedores($empresaId, $conn) {
 }
 
 /**
- * Buscar um fornecedor específico
+ * Buscar fornecedor por ID
  */
 function buscarFornecedor($id, $empresaId, $conn) {
     $sql = "SELECT * FROM fornecedores 
@@ -78,13 +79,14 @@ function buscarFornecedor($id, $empresaId, $conn) {
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("ii", $id, $empresaId);
     $stmt->execute();
-    $resultado = $stmt->get_result();
+    $result = $stmt->get_result();
     
-    if ($fornecedor = $resultado->fetch_assoc()) {
-        responderSucesso("Fornecedor encontrado", $fornecedor);
-    } else {
+    if ($result->num_rows === 0) {
         responderErro("Fornecedor não encontrado", 404);
     }
+    
+    $fornecedor = $result->fetch_assoc();
+    responderSucesso("Fornecedor encontrado", $fornecedor);
 }
 
 /**
@@ -94,99 +96,126 @@ function criarFornecedor($empresaId, $conn) {
     $dados = json_decode(file_get_contents("php://input"), true);
     
     // Validações
-    if (empty($dados["nome"])) {
-        responderErro("Nome do fornecedor é obrigatório", 400);
+    if (empty($dados["cpf_cnpj"])) {
+        responderErro("CPF/CNPJ é obrigatório", 400);
     }
     
+    if (empty($dados["nome"]) && empty($dados["razao_social"])) {
+        responderErro("Nome ou Razão Social é obrigatório", 400);
+    }
+    
+    // Verificar se CPF/CNPJ já existe
+    $cpfCnpj = limparCPFCNPJ($dados["cpf_cnpj"]);
+    $sqlCheck = "SELECT id FROM fornecedores 
+                 WHERE cpf_cnpj = ? AND empresa_id = ? AND removido_em IS NULL";
+    $stmtCheck = $conn->prepare($sqlCheck);
+    $stmtCheck->bind_param("si", $cpfCnpj, $empresaId);
+    $stmtCheck->execute();
+    $resultCheck = $stmtCheck->get_result();
+    
+    if ($resultCheck->num_rows > 0) {
+        responderErro("CPF/CNPJ já cadastrado", 400);
+    }
+    
+    // Definir tipo de pessoa baseado no tamanho do CPF/CNPJ
+    $tipoPessoa = strlen($cpfCnpj) === 11 ? 'fisica' : 'juridica';
+    
+    // Preparar dados
+    $nome = $dados["nome"] ?? $dados["razao_social"] ?? '';
+    $razaoSocial = $dados["razao_social"] ?? '';
+    $nomeFantasia = $dados["nome_fantasia"] ?? '';
+    $inscricaoEstadual = $dados["inscricao_estadual"] ?? null;
+    $inscricaoMunicipal = $dados["inscricao_municipal"] ?? null;
+    $email = $dados["email"] ?? null;
+    $telefone = $dados["telefone"] ?? null;
+    $celular = $dados["celular"] ?? null;
+    $cep = $dados["cep"] ?? null;
+    $logradouro = $dados["logradouro"] ?? null;
+    $numero = $dados["numero"] ?? null;
+    $complemento = $dados["complemento"] ?? null;
+    $bairro = $dados["bairro"] ?? null;
+    $cidade = $dados["cidade"] ?? null;
+    $estado = $dados["estado"] ?? null;
+    $observacoes = $dados["observacoes"] ?? null;
+    $ativo = isset($dados["ativo"]) ? (int)$dados["ativo"] : 1;
+    
     $sql = "INSERT INTO fornecedores (
-                empresa_id, nome, razao_social, cnpj_cpf, email, telefone, celular,
+                empresa_id, tipo_pessoa, cpf_cnpj, nome, razao_social, nome_fantasia,
+                inscricao_estadual, inscricao_municipal, email, telefone, celular,
                 cep, logradouro, numero, complemento, bairro, cidade, estado,
-                observacoes, ativo
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                observacoes, ativo, criado_em
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
     
     $stmt = $conn->prepare($sql);
     $stmt->bind_param(
-        "issssssssssssssi",
-        $empresaId,
-        $dados["nome"],
-        $dados["razao_social"] ?? null,
-        $dados["cnpj_cpf"] ?? null,
-        $dados["email"] ?? null,
-        $dados["telefone"] ?? null,
-        $dados["celular"] ?? null,
-        $dados["cep"] ?? null,
-        $dados["logradouro"] ?? null,
-        $dados["numero"] ?? null,
-        $dados["complemento"] ?? null,
-        $dados["bairro"] ?? null,
-        $dados["cidade"] ?? null,
-        $dados["estado"] ?? null,
-        $dados["observacoes"] ?? null,
-        $dados["ativo"] ?? 1
+        "issssssssssssssssssi",
+        $empresaId, $tipoPessoa, $cpfCnpj, $nome, $razaoSocial, $nomeFantasia,
+        $inscricaoEstadual, $inscricaoMunicipal, $email, $telefone, $celular,
+        $cep, $logradouro, $numero, $complemento, $bairro, $cidade, $estado,
+        $observacoes, $ativo
     );
     
     if ($stmt->execute()) {
         $novoId = $conn->insert_id;
-        responderSucesso("Fornecedor criado com sucesso", ["id" => $novoId], 201);
+        responderSucesso("Fornecedor criado com sucesso", ["id" => $novoId]);
     } else {
         responderErro("Erro ao criar fornecedor: " . $stmt->error, 500);
     }
 }
 
 /**
- * Atualizar fornecedor existente
+ * Atualizar fornecedor
  */
 function atualizarFornecedor($id, $empresaId, $conn) {
     $dados = json_decode(file_get_contents("php://input"), true);
     
-    // Verificar se o fornecedor existe e pertence à empresa
-    $sqlCheck = "SELECT id FROM fornecedores WHERE id = ? AND empresa_id = ? AND removido_em IS NULL";
+    // Verificar se fornecedor existe
+    $sqlCheck = "SELECT id FROM fornecedores 
+                 WHERE id = ? AND empresa_id = ? AND removido_em IS NULL";
     $stmtCheck = $conn->prepare($sqlCheck);
     $stmtCheck->bind_param("ii", $id, $empresaId);
     $stmtCheck->execute();
+    $resultCheck = $stmtCheck->get_result();
     
-    if ($stmtCheck->get_result()->num_rows === 0) {
+    if ($resultCheck->num_rows === 0) {
         responderErro("Fornecedor não encontrado", 404);
     }
     
+    // Preparar dados
+    $cpfCnpj = limparCPFCNPJ($dados["cpf_cnpj"]);
+    $tipoPessoa = strlen($cpfCnpj) === 11 ? 'fisica' : 'juridica';
+    $nome = $dados["nome"] ?? $dados["razao_social"] ?? '';
+    $razaoSocial = $dados["razao_social"] ?? '';
+    $nomeFantasia = $dados["nome_fantasia"] ?? '';
+    $inscricaoEstadual = $dados["inscricao_estadual"] ?? null;
+    $inscricaoMunicipal = $dados["inscricao_municipal"] ?? null;
+    $email = $dados["email"] ?? null;
+    $telefone = $dados["telefone"] ?? null;
+    $celular = $dados["celular"] ?? null;
+    $cep = $dados["cep"] ?? null;
+    $logradouro = $dados["logradouro"] ?? null;
+    $numero = $dados["numero"] ?? null;
+    $complemento = $dados["complemento"] ?? null;
+    $bairro = $dados["bairro"] ?? null;
+    $cidade = $dados["cidade"] ?? null;
+    $estado = $dados["estado"] ?? null;
+    $observacoes = $dados["observacoes"] ?? null;
+    $ativo = isset($dados["ativo"]) ? (int)$dados["ativo"] : 1;
+    
     $sql = "UPDATE fornecedores SET
-                nome = ?,
-                razao_social = ?,
-                cnpj_cpf = ?,
-                email = ?,
-                telefone = ?,
-                celular = ?,
-                cep = ?,
-                logradouro = ?,
-                numero = ?,
-                complemento = ?,
-                bairro = ?,
-                cidade = ?,
-                estado = ?,
-                observacoes = ?,
-                ativo = ?
+                tipo_pessoa = ?, cpf_cnpj = ?, nome = ?, razao_social = ?, nome_fantasia = ?,
+                inscricao_estadual = ?, inscricao_municipal = ?, email = ?, telefone = ?, celular = ?,
+                cep = ?, logradouro = ?, numero = ?, complemento = ?, bairro = ?, cidade = ?, estado = ?,
+                observacoes = ?, ativo = ?, atualizado_em = NOW()
             WHERE id = ? AND empresa_id = ?";
     
     $stmt = $conn->prepare($sql);
     $stmt->bind_param(
-        "ssssssssssssssiis",
-        $dados["nome"],
-        $dados["razao_social"] ?? null,
-        $dados["cnpj_cpf"] ?? null,
-        $dados["email"] ?? null,
-        $dados["telefone"] ?? null,
-        $dados["celular"] ?? null,
-        $dados["cep"] ?? null,
-        $dados["logradouro"] ?? null,
-        $dados["numero"] ?? null,
-        $dados["complemento"] ?? null,
-        $dados["bairro"] ?? null,
-        $dados["cidade"] ?? null,
-        $dados["estado"] ?? null,
-        $dados["observacoes"] ?? null,
-        $dados["ativo"] ?? 1,
-        $id,
-        $empresaId
+        "sssssssssssssssssssii",
+        $tipoPessoa, $cpfCnpj, $nome, $razaoSocial, $nomeFantasia,
+        $inscricaoEstadual, $inscricaoMunicipal, $email, $telefone, $celular,
+        $cep, $logradouro, $numero, $complemento, $bairro, $cidade, $estado,
+        $observacoes, $ativo, $id, $empresaId
     );
     
     if ($stmt->execute()) {
@@ -200,28 +229,27 @@ function atualizarFornecedor($id, $empresaId, $conn) {
  * Excluir fornecedor (soft delete)
  */
 function excluirFornecedor($id, $empresaId, $conn) {
-    // Verificar se existem contas a pagar vinculadas
-    $sqlCheck = "SELECT COUNT(*) as total FROM contas_pagar 
-                 WHERE fornecedor_id = ? AND empresa_id = ? AND removido_em IS NULL";
-    $stmtCheck = $conn->prepare($sqlCheck);
-    $stmtCheck->bind_param("ii", $id, $empresaId);
-    $stmtCheck->execute();
-    $resultado = $stmtCheck->get_result()->fetch_assoc();
-    
-    if ($resultado["total"] > 0) {
-        responderErro("Não é possível excluir. Existem contas a pagar vinculadas a este fornecedor.", 400);
-    }
-    
     $sql = "UPDATE fornecedores SET removido_em = NOW() 
-            WHERE id = ? AND empresa_id = ? AND removido_em IS NULL";
+            WHERE id = ? AND empresa_id = ?";
     
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("ii", $id, $empresaId);
     
-    if ($stmt->execute() && $stmt->affected_rows > 0) {
-        responderSucesso("Fornecedor excluído com sucesso");
+    if ($stmt->execute()) {
+        if ($stmt->affected_rows > 0) {
+            responderSucesso("Fornecedor excluído com sucesso");
+        } else {
+            responderErro("Fornecedor não encontrado", 404);
+        }
     } else {
-        responderErro("Fornecedor não encontrado ou já excluído", 404);
+        responderErro("Erro ao excluir fornecedor: " . $stmt->error, 500);
     }
 }
-?>
+
+/**
+ * Limpar CPF/CNPJ (remover pontos, traços e barras)
+ */
+function limparCPFCNPJ($cpfCnpj) {
+    return preg_replace('/[^0-9]/', '', $cpfCnpj);
+}
+
